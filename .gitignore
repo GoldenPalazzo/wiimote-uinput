@@ -1,0 +1,5 @@
+.cache/
+*.nix
+*.lock
+compile_commands.json
+*.bin
