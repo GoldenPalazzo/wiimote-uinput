@@ -1,17 +1,24 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -Werror
+CFLAGS = -Wall -Wextra
 
-BINNAME = wii2xb.bin
+BINS = wii2xb.bin wiimote.bin
 SOURCES = src/main.c
-
-$(BINNAME): $(SOURCES)
-	$(CC) $(CFLAGS) -o $@ $<
 
 
 .PHONY: all debug clean
+
 all: CFLAGS += -O2
-all: $(BINNAME)
+all: $(BINS)
+
+wii2xb.bin: $(SOURCES)
+	$(CC) $(CFLAGS) -o $@ $<
+
+wiimote.bin: src/wiimote.c
+	$(CC) $(CFLAGS) -o $@ $<
+
+
+
 debug: CFLAGS += -g -O0
-debug: $(BINNAME)
+debug: $(BINS)
 clean:
-	rm -f $(BINNAME)
+	rm -f $(BINS)
