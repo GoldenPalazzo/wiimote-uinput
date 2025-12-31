@@ -163,6 +163,26 @@ int wiimote_connect(const char *hidraw_file, WiimoteInputReportType intype) {
     return fd;
 }
 
+void decrypt_extension(int fd) {
+    char buf[22] = {
+        0x16, // write
+        0x04, // addr space (in this case control registers)
+        0xa4, 0x00, 0xf0, // first encryption address
+        0x01, 0x55, // size and data
+                    // 7 bytes written
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00
+    };
+    send_msg(fd, buf, 22); // some kind of ack of type 0x22 is sent but
+                          // still has to be investigated, so we're gonna
+                          // assume that it worked
+    buf[4] = 0xfb;
+    buf[6] = 0x00;
+    send_msg(fd, buf, 22);
+    printf("extension decrypted!\n");
+}
+
 int main(int argc, char *argv[]) {
     int wiimote_fd, res;
     char buf[128];
