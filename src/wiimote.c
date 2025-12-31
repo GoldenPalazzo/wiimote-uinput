@@ -189,13 +189,29 @@ int main(int argc, char *argv[]) {
     if ((wiimote_fd = wiimote_connect(argv[1], COREEXT8)) < 0) {
         return wiimote_fd;
     }
-
     while(1) {
         res = get_msg(wiimote_fd, buf, sizeof(buf));
-        // for (size_t i=0; i<(size_t)res; i++)
-        //     printf("%hhx ", buf[i]);
-        // puts("\n");
-        parse_wiimsg(buf);
+        for (size_t i=0; i<(size_t)res; i++)
+            printf("%hhx ", buf[i]);
+        // parse_wiimsg(buf);
+        if (buf[0] == WII_STATUSREPORT) {
+            uint8_t flags = buf[3];
+            if (flags & 0x02) {
+                printf("connection to extension detected\n");
+                decrypt_extension(wiimote_fd);
+            }
+            usleep(50000); // necessary sleep
+                           // Following a connection or disconnection event on
+                           // the Extension Port, data reporting is disabled
+                           // and the Data Reporting Mode must be reset before
+                           // new data can arrive.
+            wiimote_change_mode(wiimote_fd, COREEXT8);
+        } else if (buf[0] == WII_ACKOUTRETURN) {
+            if (buf[4] != 0) {
+                printf("error from command %hhx (%hhx)", buf[3], buf[4]);
+            }
+        }
+        puts("\n");
     }
 
     close(wiimote_fd);
