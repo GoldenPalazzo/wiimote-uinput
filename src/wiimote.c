@@ -129,6 +129,12 @@ void send_rumble(int fd, int secs) {
     send_msg(fd, buf, 2);
 }
 
+int wiimote_change_mode(int fd, WiimoteInputReportType intype) {
+    char buf[3] = {WII_REPORTMODE, WII_REPORTCONTINUOUS, intype};
+    send_msg(fd, buf, 3);
+    return fd;
+}
+
 int wiimote_connect(const char *hidraw_file, WiimoteInputReportType intype) {
     if (hidraw_file == NULL){
         printf("error: no hidraw input specified");
@@ -153,8 +159,7 @@ int wiimote_connect(const char *hidraw_file, WiimoteInputReportType intype) {
 	}
     */
 
-    char buf[3] = {WII_REPORTMODE, WII_REPORTONCHANGE, intype};
-    send_msg(fd, buf, 3);
+    wiimote_change_mode(fd, intype);
     return fd;
 }
 
