@@ -1,34 +1,72 @@
 #ifndef _GWIIMOTE_H_
 #define _GWIIMOTE_H_
 #include <stddef.h>
+#include <stdint.h>
 
-/* Wii reports */
-#define WII_RUMBLE 0x10
-#define WII_LEDS   0x11
-#define WII_REPORTMODE 0x12
-#define WII_REPORTONCHANGE 0x00
-#define WII_REPORTCONTINUOUS 0x04
-
-/* Input report types */
-#define WII_STATUSREPORT 0x20
-#define WII_READMEMDATA 0x21
-#define WII_ACKOUTRETURN 0x22
-
-/* Input report types with data */
 typedef enum {
-    COREBTNS = 0x30,
-    COREEXT8 = 0x32
-} WiimoteInputReportType;
+    RUMBLE = 0x10,
+    LEDS,
+    REPORTING_MODE,
+    IR_CAMERA_ENABLE,
+    SPEAKER_ENABLE,
+    STATUS_INFO_REQUEST,
+    WRITE_MEMREG_REQUEST,
+    READ_MEMREG_REQUEST,
+    SPEAKER_DATA,
+    SPEAKER_MUTE,
+    IR_CAMERA_ENABLE_2,
+
+    STATUS_INFO_REPLY = 0x20,
+    READ_MEMREG_REPLY,
+    ACK_OUT_RETURN,
+
+    DATA_REP_COREBTNS = 0x30,
+    DATA_REP_COREEXT8 = 0x32
+} wiimote_report_type_t;
+
+typedef struct {
+    uint8_t sx, sy, c, z;
+} nunchuck_state_t;
+
+#define WII_BTN_LEFT(b) ((b).buttons & 0x0100)
+#define WII_BTN_RIGHT(b) ((b).buttons & 0x0200)
+#define WII_BTN_DOWN(b) ((b).buttons & 0x0400)
+#define WII_BTN_UP(b) ((b).buttons & 0x0800)
+#define WII_BTN_PLUS(b) ((b).buttons & 0x1000)
+#define WII_BTN_MINUS(b) ((b).buttons & 0x0010)
+#define WII_BTN_A(b) ((b).buttons & 0x0008)
+#define WII_BTN_B(b) ((b).buttons & 0x0004)
+#define WII_BTN_HOME(b) ((b).buttons & 0x0080)
+#define WII_BTN_1(b) ((b).buttons & 0x0020)
+#define WII_BTN_2(b) ((b).buttons & 0x0040)
+#define WII_LED_ONEHOT(b) ((b).status_flags >> 0x08)
+#define WII_FLAG_EXT_CONNECTED(b) ((b).status_flags & 0x02)
+
+typedef struct {
+    uint16_t buttons;
+    uint8_t ext_connected;
+    nunchuck_state_t nunchuck;
+
+    uint8_t battery;
+    uint8_t status_flags;
+} wiimote_state_t;
+
+typedef enum {
+    DEBUG_TYPE_NONE,
+    DEBUG_TYPE_HID,
+    DEBUG_TYPE_WIIMOTE,
+} debug_type_t;
+
+typedef struct {
+    int fd;
+    wiimote_state_t state;
+    debug_type_t debug_type;
+} gwiimote_params_t;
 
 const char *corebtns_mask = "---pudrlh--mab12";
 const char *flags_mask = "iseb";
 
-const char *bus_str(int bus);
-void parse_wiimsg(const char *buf);
-int send_msg(int fd, const char *buf, size_t buf_size);
-int get_msg(int fd, char *buf, size_t buf_size);
-void send_rumble(int fd, int secs);
-int wiimote_connect(const char *hidraw_file, WiimoteInputReportType intype);
+int wiimote_handler_thread(void *args);
 #endif
 
 
