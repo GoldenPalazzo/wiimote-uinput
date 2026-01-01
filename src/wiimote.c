@@ -50,6 +50,16 @@ const char *bus_str(int bus) {
 	}
 }
 
+void parse_nunchuck(const char *nc_buf) {
+    uint8_t sx, sy, c, z;
+    sx = nc_buf[0];
+    sy = nc_buf[1];
+    c = ((nc_buf[5] >> 1) & 1) ^ 1;
+    z = ((nc_buf[5] & 1) ^ 1);
+    // c and z are inverted
+    printf("nunchuck: sx=%hhu sy=%hhu c=%hhu z=%hhu\n", sx, sy, c, z);
+}
+
 void parse_wiimsg(const char *buf) {
     uint16_t btns;
     uint8_t battery, led_state, status_flags;
@@ -85,9 +95,10 @@ void parse_wiimsg(const char *buf) {
             for (int i=0; i<16; i++) {
                 printf("%c", btns & 1 << (15-i) ? corebtns_mask[i] : '-');
             }
-            for (size_t i=3; i<11; i++)
-                printf("%hhx ", buf[i]);
-            puts("\n");
+            // for (size_t i=3; i<11; i++)
+            //     printf("%hhx ", buf[i]);
+            parse_nunchuck(&buf[3]);
+            // puts("\n");
             break;
         default:
             break;
