@@ -37,8 +37,8 @@ typedef struct {
 #define WII_BTN_A(b) ((b).buttons & 0x0008)
 #define WII_BTN_B(b) ((b).buttons & 0x0004)
 #define WII_BTN_HOME(b) ((b).buttons & 0x0080)
-#define WII_BTN_1(b) ((b).buttons & 0x0020)
-#define WII_BTN_2(b) ((b).buttons & 0x0040)
+#define WII_BTN_1(b) ((b).buttons & 0x0002)
+#define WII_BTN_2(b) ((b).buttons & 0x0001)
 #define WII_LED_ONEHOT(b) ((b).status_flags >> 0x08)
 #define WII_FLAG_EXT_CONNECTED(b) ((b).status_flags & 0x02)
 
@@ -63,10 +63,8 @@ typedef struct {
     debug_type_t debug_type;
 } gwiimote_params_t;
 
-const char *corebtns_mask = "---pudrlh--mab12";
-const char *flags_mask = "iseb";
-
-int wiimote_handler_thread(void *args);
+int connect_wiimote(const char *device_path, wiimote_state_t *initial_state);
+int update_wiimote_state(int fd, wiimote_state_t *state, debug_type_t debug_type);
 #endif
 
 

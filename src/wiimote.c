@@ -30,6 +30,9 @@
 
 #define BITMASK_COREBTNS(high, low) ((unsigned char)high << 8) | (unsigned char)low
 
+const char *corebtns_mask = "---pudrlh--mab12";
+const char *flags_mask = "iseb";
+
 /* only for debug print purposes */
 int send_msg(int fd, const char *buf, size_t buf_size) {
     int res = write(fd, buf, buf_size);
@@ -127,81 +130,100 @@ void print_nunchuck_state(const nunchuck_state_t *nc_state) {
     printf(" z: %hhu\n", nc_state->z);
 }
 
-int wiimote_handler_thread(void *args) {
-    gwiimote_params_t *params = (gwiimote_params_t *)args;
-    wiimote_state_t *state = &params->state;
-    int fd = params->fd;
-    char buf[128];
-    int res;
-    while (1) {
-        res = get_msg(fd, buf, sizeof(buf));
-        if (res <= 0) {
+void handle_status_input_reply(int fd, const char *buf, wiimote_state_t *state) {
+    state->status_flags = buf[3];
+    state->buttons = BITMASK_COREBTNS(buf[1], buf[2]);
+    state->battery = buf[7];
+    // printf("flag status report: ");
+    // for (int i=0; i<4; i++)
+    //     printf("%c", status_flags & 1 << (3-i) ? flags_mask[i] : '-');
+    // puts("\n");
+
+    if (WII_FLAG_EXT_CONNECTED(*state) && !state->ext_connected) {
+        printf("connection to extension detected\n");
+        state->ext_connected = 1;
+        decrypt_extension(fd);
+    // it is very important to check that the extension was
+    // previously connected, because otherwise there will be some
+    // strange write errors that make the changemode fail
+    } else if (!WII_FLAG_EXT_CONNECTED(*state) && state->ext_connected) {
+        printf("disconnection from extension detected\n");
+        state->ext_connected = 0;
+    }
+    usleep(50000); // necessary sleep
+                   // Following a connection or disconnection event on
+                   // the Extension Port, data reporting is disabled
+                   // and the Data Reporting Mode must be reset before
+                   // new data can arrive.
+    wiimote_change_mode(fd, DATA_REP_COREEXT8);
+}
+
+int update_wiimote_state(int fd, wiimote_state_t *state, debug_type_t debug_type) {
+    char buf[64];
+    int res = get_msg(fd, buf, sizeof(buf));
+    if (res < 0) {
+        return res;
+    }
+
+    switch (buf[0]) {
+        case DATA_REP_COREBTNS:
+        case DATA_REP_COREEXT8:
+            // parse input report and update state
+            // (not implemented here)
+            state->buttons = BITMASK_COREBTNS(buf[1], buf[2]);
+            if (buf[0] == DATA_REP_COREEXT8) {
+                parse_nunchuck(buf+3, &state->nunchuck);
+            }
             break;
-        }
-
-        switch (buf[0]) {
-            case DATA_REP_COREBTNS:
-            case DATA_REP_COREEXT8:
-                // parse input report and update state
-                // (not implemented here)
-                state->buttons = BITMASK_COREBTNS(buf[1], buf[2]);
-                if (buf[0] == DATA_REP_COREEXT8) {
-                    parse_nunchuck(buf+3, &state->nunchuck);
-                }
-                break;
-            case STATUS_INFO_REPLY:
-                state->status_flags = buf[3];
-                state->buttons = BITMASK_COREBTNS(buf[1], buf[2]);
-                state->battery = buf[7];
-                // printf("flag status report: ");
-                // for (int i=0; i<4; i++)
-                //     printf("%c", status_flags & 1 << (3-i) ? flags_mask[i] : '-');
-                // puts("\n");
-
-                if (WII_FLAG_EXT_CONNECTED(*state) && !state->ext_connected) {
-                    printf("connection to extension detected\n");
-                    state->ext_connected = 1;
-                    decrypt_extension(fd);
-                // it is very important to check that the extension was
-                // previously connected, because otherwise there will be some
-                // strange write errors that make the changemode fail
-                } else if (!WII_FLAG_EXT_CONNECTED(*state) && state->ext_connected) {
-                    printf("disconnection from extension detected\n");
-                    state->ext_connected = 0;
-                }
-                usleep(50000); // necessary sleep
-                               // Following a connection or disconnection event on
-                               // the Extension Port, data reporting is disabled
-                               // and the Data Reporting Mode must be reset before
-                               // new data can arrive.
-                wiimote_change_mode(fd, DATA_REP_COREEXT8);
-                break;
-            case ACK_OUT_RETURN:
-                if (buf[4] != 0) {
-                    printf("error from command %hhx (%hhx)\n", buf[3], buf[4]);
-                }
-                break;
-            default:
-                break;
-        }
-
-        switch (params->debug_type) {
-            case DEBUG_TYPE_HID:
+        case STATUS_INFO_REPLY:
+            handle_status_input_reply(fd, buf, state);
+            break;
+        case ACK_OUT_RETURN:
+            if (buf[4] != 0) {
+                printf("error from command %hhx (%hhx)\n", buf[3], buf[4]);
+            }
+            break;
+        default:
+            printf("unknown report type: %hhx\n", buf[0]);
+            if (debug_type != DEBUG_TYPE_HID) {
                 for (int i=0; i<res; i++)
                     printf("%02hhx ", buf[i]);
                 puts("\n");
-                break;
-            case DEBUG_TYPE_WIIMOTE:
-                // handled below
-                print_wiimote_state(state);
-                print_nunchuck_state(&state->nunchuck);
-                break;
-            case DEBUG_TYPE_NONE:
-            default:
-                break;
-        }
+            }
+            break;
+    }
+
+    switch (debug_type) {
+        case DEBUG_TYPE_HID:
+            for (int i=0; i<res; i++)
+                printf("%02hhx ", buf[i]);
+            puts("\n");
+            break;
+        case DEBUG_TYPE_WIIMOTE:
+            // handled below
+            print_wiimote_state(state);
+            print_nunchuck_state(&state->nunchuck);
+            break;
+        case DEBUG_TYPE_NONE:
+        default:
+            break;
     }
     return res;
+}
+
+int connect_wiimote(const char *device_path, wiimote_state_t *initial_state) {
+    int fd = open(device_path, O_RDWR);
+    if (fd < 0) {
+        perror("open wiimote device");
+        return fd;
+    }
+    wiimote_change_mode(fd, DATA_REP_COREEXT8);
+    int res;
+    char buf[64];
+    send_msg(fd, (char[]){STATUS_INFO_REQUEST, 0x00}, 2);
+    while ((res = get_msg(fd, buf, sizeof(buf)) > 0) && buf[0] != STATUS_INFO_REPLY);
+    handle_status_input_reply(fd, buf, initial_state);
+    return fd;
 }
 
 //
