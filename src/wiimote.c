@@ -30,6 +30,8 @@
 
 #define BITMASK_COREBTNS(high, low) ((unsigned char)high << 8) | (unsigned char)low
 
+static int extension_connected = 0;
+
 const char *bus_str(int bus) {
 	switch (bus) {
 	case BUS_USB:
@@ -202,14 +204,21 @@ int main(int argc, char *argv[]) {
     }
     while(1) {
         res = get_msg(wiimote_fd, buf, sizeof(buf));
-        for (size_t i=0; i<(size_t)res; i++)
-            printf("%hhx ", buf[i]);
-        // parse_wiimsg(buf);
+        // for (size_t i=0; i<(size_t)res; i++)
+        //     printf("%hhx ", buf[i]);
+        parse_wiimsg(buf);
         if (buf[0] == WII_STATUSREPORT) {
             uint8_t flags = buf[3];
-            if (flags & 0x02) {
+            if (flags & 0x02 && !extension_connected) {
                 printf("connection to extension detected\n");
+                extension_connected = 1;
                 decrypt_extension(wiimote_fd);
+            // it is very important to check that the extension was
+            // previously connected, because otherwise there will be some
+            // strange write errors that make the changemode fail
+            } else if (!(flags & 0x02) && extension_connected) {
+                printf("disconnection from extension detected\n");
+                extension_connected = 0;
             }
             usleep(50000); // necessary sleep
                            // Following a connection or disconnection event on
@@ -222,7 +231,7 @@ int main(int argc, char *argv[]) {
                 printf("error from command %hhx (%hhx)", buf[3], buf[4]);
             }
         }
-        puts("\n");
+        // puts("\n");
     }
 
     close(wiimote_fd);
