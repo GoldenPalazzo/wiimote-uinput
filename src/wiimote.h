@@ -21,7 +21,17 @@ typedef enum {
     ACK_OUT_RETURN,
 
     DATA_REP_COREBTNS = 0x30,
-    DATA_REP_COREEXT8 = 0x32
+    DATA_REP_COREACC,
+    DATA_REP_COREEXT8,
+    DATA_REP_COREACCIR12,
+    DATA_REP_COREEXT19,
+    DATA_REP_COREACC16,
+    DATA_REP_COREIR10EXT9,
+    DATA_REP_COREACCIR10EXT6,
+
+    DATA_REP_EXT21 = 0x3D,
+    DATA_REP_INTERLEAVED1,
+    DATA_REP_INTERLEAVED2,
 } wiimote_report_type_t;
 
 typedef struct {
@@ -64,7 +74,12 @@ typedef struct {
 } gwiimote_params_t;
 
 int connect_wiimote(const char *device_path, wiimote_state_t *initial_state);
-int update_wiimote_state(int fd, wiimote_state_t *state, debug_type_t debug_type);
+int handle_wiimote_event(
+        int fd,
+        wiimote_state_t *state,
+        const char *event_buffer,
+        int debug
+        );
 #endif
 
 

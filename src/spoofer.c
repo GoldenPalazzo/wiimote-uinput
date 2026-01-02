@@ -1,4 +1,5 @@
 #include "wiimote.h"
+#include "logger.h"
 #include <linux/uinput.h>
 #include <fcntl.h>
 #include <stdlib.h>
@@ -115,7 +116,7 @@ int destroy_uinput_device(int fd) {
 }
 
 void wiimote_to_uinput(const wiimote_state_t *wiimote, int uinput_fd) {
-    // printf("Wiimote state: buttons=0x%04x", wiimote->buttons);
+    LOG_INFO("Wiimote state: buttons=0x%04x", wiimote->buttons);
     emit(uinput_fd, EV_KEY, BTN_SOUTH, WII_BTN_A(*wiimote));
     emit(uinput_fd, EV_KEY, BTN_EAST, WII_BTN_B(*wiimote));
     emit(uinput_fd, EV_KEY, BTN_WEST, !!WII_BTN_1(*wiimote));
@@ -127,7 +128,7 @@ void wiimote_to_uinput(const wiimote_state_t *wiimote, int uinput_fd) {
     emit(uinput_fd, EV_KEY, BTN_START, WII_BTN_PLUS(*wiimote));
     emit(uinput_fd, EV_KEY, BTN_SELECT, WII_BTN_MINUS(*wiimote));
     if (wiimote->ext_connected) {
-        // printf(" Nunchuck: sx=%d sy=%d", wiimote->nunchuck.sx, wiimote->nunchuck.sy);
+        LOG_INFO(" Nunchuck: sx=%d sy=%d", wiimote->nunchuck.sx, wiimote->nunchuck.sy);
         emit(uinput_fd, EV_ABS, ABS_X, wiimote->nunchuck.sx);
         emit(uinput_fd, EV_ABS, ABS_Y, NUNCHUCK_MAX-wiimote->nunchuck.sy);
     } else {
@@ -135,5 +136,4 @@ void wiimote_to_uinput(const wiimote_state_t *wiimote, int uinput_fd) {
         emit(uinput_fd, EV_ABS, ABS_Y, 0);
     }
     emit(uinput_fd, EV_SYN, SYN_REPORT, 0);
-    printf("\n");
 }
