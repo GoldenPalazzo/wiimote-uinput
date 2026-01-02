@@ -209,10 +209,13 @@ int handle_wiimote_event(
             handle_status_input_reply(fd, event_buffer, state);
             break;
         case ACK_OUT_RETURN:
-            if (event_buffer[4] != 0) {
+            state->buttons = BITMASK_COREBTNS(event_buffer[1], event_buffer[2]);
+            if (event_buffer[4] == 0x03) {
                 LOG_ERROR("Wiimote sent error for command %hhx (%hhx)",
-                        event_buffer[3], event_buffer[4]);
+                    event_buffer[3], event_buffer[4]);
             }
+            break;
+        case READ_MEMREG_REPLY:
             break;
         default:
             LOG_ERROR("Wiimote sent unrecognized report type: %hhx",
