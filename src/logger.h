@@ -1,11 +1,17 @@
 #ifndef _GLOGGER_H_
 #define _GLOGGER_H_
 
+#define LOG_LEVEL_DEBUG "DEBUG"
 #define LOG_LEVEL_INFO "INFO"
+#define LOG_LEVEL_WARN "WARN"
 #define LOG_LEVEL_ERROR "ERROR"
 
+#define LOG_DEBUG(format, ...) \
+    log_message(LOG_LEVEL_DEBUG, format, ##__VA_ARGS__)
 #define LOG_INFO(format, ...) \
     log_message(LOG_LEVEL_INFO, format, ##__VA_ARGS__)
+#define LOG_WARN(format, ...) \
+    log_message(LOG_LEVEL_WARN, format, ##__VA_ARGS__)
 #define LOG_ERROR(format, ...) \
     log_message(LOG_LEVEL_ERROR, format, ##__VA_ARGS__)
 
