@@ -178,7 +178,7 @@ int main(int argc, char *argv[]) {
     char event_buffer[64];
     while (keep_running) {
         n_events = epoll_wait(epoll_fd, events, 10, 1000);
-        LOG_INFO("Epoll wait returned %d events.", n_events);
+        LOG_DEBUG("Epoll wait returned %d events.", n_events);
         if (n_events < 0) {
             perror("epoll_wait");
             ret = 1;
@@ -239,16 +239,16 @@ int main(int argc, char *argv[]) {
                     connected_wiimotes--;
                     continue;
                 }
-                char debug_log_event[128];
-                char *p = debug_log_event;
-                size_t remaining = sizeof(debug_log_event);
-                for (int k=0; k<r_bytes; k++) {
-                    int written = snprintf(p,
-                        remaining, "%02hhx ", event_buffer[k]);
-                    remaining -= written;
-                    p += written;
-                }
-                LOG_INFO("Wiimote event (%d bytes): %s", r_bytes, debug_log_event);
+                // char debug_log_event[128];
+                // char *p = debug_log_event;
+                // size_t remaining = sizeof(debug_log_event);
+                // for (int k=0; k<r_bytes; k++) {
+                //     int written = snprintf(p,
+                //         remaining, "%02hhx ", event_buffer[k]);
+                //     remaining -= written;
+                //     p += written;
+                // }
+                // LOG_INFO("Wiimote event (%d bytes): %s", r_bytes, debug_log_event);
                 if (handle_wiimote_event(
                     wiimote_fd, state, event_buffer, 0) < 0) {
                     LOG_ERROR("Failed to handle wiimote event.");
