@@ -147,6 +147,7 @@ void print_nunchuck_state(const nunchuck_state_t *nc_state) {
 }
 
 void handle_status_input_reply(int fd, const char *buf, wiimote_state_t *state) {
+    state->initialized = 1;
     state->status_flags = buf[3];
     state->buttons = BITMASK_COREBTNS(buf[1], buf[2]);
     state->battery = buf[7];

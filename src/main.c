@@ -66,7 +66,7 @@ int register_wiimote_device(struct udev_device *dev,
         ret = -1;
         goto reg_wiimote_failed_wiimote;
     }
-    ev.events = EPOLLIN | EPOLLET;
+    ev.events = EPOLLIN | EPOLLOUT | EPOLLET;
     ev.data.fd = fd;
     if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &ev) < 0) {
         perror("epoll_ctl: wiimote device");
@@ -155,7 +155,6 @@ int main(int argc, char *argv[]) {
     int connected_wiimotes_uinputs_fds[MAX_WIIMOTES] = {-1, -1, -1, -1};
     wiimote_state_t connected_wiimotes_states[MAX_WIIMOTES] = {0};
 
-
     struct udev_enumerate *enumerate = udev_enumerate_new(udev);
     udev_enumerate_add_match_subsystem(enumerate, "hidraw");
     udev_enumerate_scan_devices(enumerate);
@@ -210,7 +209,18 @@ int main(int argc, char *argv[]) {
                     LOG_ERROR("Unknown wiimote fd %d", wiimote_fd);
                     continue;
                 }
+
+                if (events[i].events & EPOLLERR) {
+                    LOG_ERROR("Epoll error on wiimote fd %d", wiimote_fd);
+                    continue;
+                }
+
                 wiimote_state_t *state = &connected_wiimotes_states[wiimote_index];
+                if (events[i].events & EPOLLOUT && state->initialized == 0) {
+                    LOG_INFO("Initializing Wiimote...", wiimote_fd);
+                    write(wiimote_fd, (char[]){STATUS_INFO_REQUEST, 0x00}, 2);
+                }
+
                 int uinput_fd = connected_wiimotes_uinputs_fds[wiimote_index];
 
                 ssize_t r_bytes = read(
@@ -237,6 +247,7 @@ int main(int argc, char *argv[]) {
                     connected_wiimotes_uinputs_fds[connected_wiimotes-1] = -1;
                     connected_wiimotes_states[connected_wiimotes-1] = (wiimote_state_t){0};
                     connected_wiimotes--;
+                    epoll_ctl(epoll_fd, EPOLL_CTL_DEL, wiimote_fd, NULL);
                     continue;
                 }
                 // char debug_log_event[128];

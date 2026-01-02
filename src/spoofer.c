@@ -116,6 +116,9 @@ int destroy_uinput_device(int fd) {
 }
 
 void wiimote_to_uinput(const wiimote_state_t *wiimote, int uinput_fd) {
+    if (!wiimote->initialized) {
+        return;
+    }
     LOG_DEBUG("Wiimote state: buttons=0x%04x", wiimote->buttons);
     emit(uinput_fd, EV_KEY, BTN_SOUTH, WII_BTN_A(*wiimote));
     emit(uinput_fd, EV_KEY, BTN_EAST, WII_BTN_B(*wiimote));

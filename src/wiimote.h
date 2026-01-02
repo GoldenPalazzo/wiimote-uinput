@@ -59,6 +59,8 @@ typedef struct {
 
     uint8_t battery;
     uint8_t status_flags;
+
+    uint8_t initialized;
 } wiimote_state_t;
 
 typedef enum {
@@ -66,12 +68,6 @@ typedef enum {
     DEBUG_TYPE_HID,
     DEBUG_TYPE_WIIMOTE,
 } debug_type_t;
-
-typedef struct {
-    int fd;
-    wiimote_state_t state;
-    debug_type_t debug_type;
-} gwiimote_params_t;
 
 int connect_wiimote(const char *device_path, wiimote_state_t *initial_state);
 int handle_wiimote_event(
