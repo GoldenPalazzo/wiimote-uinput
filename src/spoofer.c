@@ -132,8 +132,8 @@ void wiimote_to_uinput(const wiimote_state_t *wiimote, int uinput_fd) {
         emit(uinput_fd, EV_ABS, ABS_X, wiimote->nunchuck.sx);
         emit(uinput_fd, EV_ABS, ABS_Y, NUNCHUCK_MAX-wiimote->nunchuck.sy);
     } else {
-        emit(uinput_fd, EV_ABS, ABS_X, 0);
-        emit(uinput_fd, EV_ABS, ABS_Y, 0);
+        emit(uinput_fd, EV_ABS, ABS_X, (NUNCHUCK_MIN + NUNCHUCK_MAX) / 2);
+        emit(uinput_fd, EV_ABS, ABS_Y, (NUNCHUCK_MIN + NUNCHUCK_MAX) / 2);
     }
     emit(uinput_fd, EV_SYN, SYN_REPORT, 0);
 }
