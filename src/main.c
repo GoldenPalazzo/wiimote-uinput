@@ -21,6 +21,81 @@ void sigint_handler(int _) {
     keep_running = 0;
 }
 
+static inline int is_wiimote(struct hidraw_devinfo *info) {
+    return (info->vendor == 0x057e && (
+                info->product == 0x0306 || info->product == 0x0330));
+}
+
+int register_wiimote_device(struct udev_device *dev,
+        int epoll_fd,
+        int *connected_wiimotes,
+        int connected_wiimotes_fds[],
+        int connected_wiimotes_uinputs_fds[],
+        wiimote_state_t connected_wiimotes_states[]) {
+    int ret = 0;
+    struct epoll_event ev;
+    struct hidraw_devinfo info;
+    // const char *action = udev_device_get_action(dev);
+    const char *devnode = udev_device_get_devnode(dev);
+    if (devnode == NULL) {
+        goto reg_wiimote_failed_dev;
+    }
+    // LOG_INFO("Udev event: %s - %s", action, devnode);
+    int fd = open(devnode, O_RDWR | O_NONBLOCK);
+    if (fd < 0) {
+        perror("open devnode");
+        ret = -1;
+        goto reg_wiimote_failed_dev;
+    }
+    if (ioctl(fd, HIDIOCGRAWINFO, &info) < 0) {
+        perror("ioctl HIDIOCGRAWINFO");
+        ret = -1;
+        goto reg_wiimote_failed_wiimote;
+    }
+
+    LOG_INFO("  Vendor: 0x%04hx, Product: 0x%04hx", info.vendor, info.product);
+    if (!is_wiimote(&info)) {
+        LOG_INFO("  Not a Wiimote, ignoring.");
+        ret = -1;
+        goto reg_wiimote_failed_wiimote;
+    }
+    if (*connected_wiimotes+1 > MAX_WIIMOTES) {
+        LOG_INFO("  Maximum number of connected Wiimotes reached (%d).", MAX_WIIMOTES);
+        // todo: should implement a routine to
+        // disconnect the connecting wiimote...
+        ret = -1;
+        goto reg_wiimote_failed_wiimote;
+    }
+    ev.events = EPOLLIN | EPOLLET;
+    ev.data.fd = fd;
+    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &ev) < 0) {
+        perror("epoll_ctl: wiimote device");
+        ret = -1;
+        goto reg_wiimote_failed_wiimote;
+    }
+    LOG_INFO("  Wiimote device added to epoll.");
+    connected_wiimotes_uinputs_fds[*connected_wiimotes] =
+        create_uinput_device();
+    if (connected_wiimotes_uinputs_fds[*connected_wiimotes] < 0) {
+        perror("create_uinput_device");
+        ret = -1;
+        goto reg_wiimote_failed_wiimote;
+    }
+    connected_wiimotes_states[*connected_wiimotes] =
+        (wiimote_state_t){0};
+    connected_wiimotes_fds[*connected_wiimotes] = fd;
+    (*connected_wiimotes)++;
+    LOG_INFO("  Wiimote connected (fd %d)! Total connected: %d", fd, *connected_wiimotes);
+    goto reg_wiimote_success;
+
+reg_wiimote_failed_wiimote:
+    close(fd);
+reg_wiimote_failed_dev:
+reg_wiimote_success:
+    udev_device_unref(dev);
+    return ret;
+}
+
 int main(int argc, char *argv[]) {
     UNUSED(argc);
     UNUSED(argv);
@@ -80,10 +155,27 @@ int main(int argc, char *argv[]) {
     int connected_wiimotes_uinputs_fds[MAX_WIIMOTES] = {-1, -1, -1, -1};
     wiimote_state_t connected_wiimotes_states[MAX_WIIMOTES] = {0};
 
+
+    struct udev_enumerate *enumerate = udev_enumerate_new(udev);
+    udev_enumerate_add_match_subsystem(enumerate, "hidraw");
+    udev_enumerate_scan_devices(enumerate);
+    struct udev_list_entry *devices = udev_enumerate_get_list_entry(enumerate);
+    struct udev_list_entry *entry;
+    udev_list_entry_foreach(entry, devices) {
+        const char *path = udev_list_entry_get_name(entry);
+        struct udev_device *dev = udev_device_new_from_syspath(udev, path);
+        LOG_INFO("Found device: %s", path);
+        register_wiimote_device(dev,
+            epoll_fd,
+            &connected_wiimotes,
+            connected_wiimotes_fds,
+            connected_wiimotes_uinputs_fds,
+            connected_wiimotes_states);
+    }
+
     signal(SIGINT, sigint_handler);
     int n_events, i;
     char event_buffer[64];
-    struct hidraw_devinfo info;
     while (keep_running) {
         n_events = epoll_wait(epoll_fd, events, 10, 1000);
         LOG_INFO("Epoll wait returned %d events.", n_events);
@@ -97,63 +189,13 @@ int main(int argc, char *argv[]) {
 
         for (i=0; i<n_events; i++) {
             if (events[i].data.fd == mon_fd) { // udev monitor loop
-                struct udev_device *dev = udev_monitor_receive_device(mon);
-                if (dev == NULL) {
-                    LOG_ERROR("No device from udev monitor.");
-                    continue;
-                }
-                LOG_INFO("Udev device received.");
-                const char *action = udev_device_get_action(dev);
-                const char *devnode = udev_device_get_devnode(dev);
-                if (action == NULL || devnode == NULL) {
-                    goto loop_failed_dev;
-                }
-                LOG_INFO("Udev event: %s - %s", action, devnode);
-                int fd = open(devnode, O_RDWR | O_NONBLOCK);
-                if (fd < 0) {
-                    perror("open devnode");
-                    goto loop_failed_dev;
-                }
-                if (ioctl(fd, HIDIOCGRAWINFO, &info) < 0) {
-                    perror("ioctl HIDIOCGRAWINFO");
-                    goto loop_failed_wiimote;
-                }
-
-                LOG_INFO("  Vendor: 0x%04hx, Product: 0x%04hx", info.vendor, info.product);
-                if (info.vendor != 0x057e || info.product != 0x0306) {
-                    LOG_INFO("  Not a Wiimote, ignoring.");
-                    goto loop_failed_wiimote;
-                }
-                if (connected_wiimotes+1 > MAX_WIIMOTES) {
-                    LOG_INFO("  Maximum number of connected Wiimotes reached (%d).", MAX_WIIMOTES);
-                    // todo: should implement a routine to
-                    // disconnect the connecting wiimote...
-                    goto loop_failed_wiimote;
-                }
-                ev.events = EPOLLIN | EPOLLET;
-                ev.data.fd = fd;
-                if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &ev) < 0) {
-                    perror("epoll_ctl: wiimote device");
-                    goto loop_failed_wiimote;
-                }
-                LOG_INFO("  Wiimote device added to epoll.");
-                connected_wiimotes_uinputs_fds[connected_wiimotes] =
-                    create_uinput_device();
-                if (connected_wiimotes_uinputs_fds[connected_wiimotes] < 0) {
-                    perror("create_uinput_device");
-                    goto loop_failed_wiimote;
-                }
-                connected_wiimotes_states[connected_wiimotes] =
-                    (wiimote_state_t){0};
-                connected_wiimotes_fds[connected_wiimotes] = fd;
-                connected_wiimotes++;
-                LOG_INFO("  Wiimote connected! Total connected: %d", connected_wiimotes);
-                goto loop_failed_dev; // no need to keep dev ref
-
-loop_failed_wiimote:
-                close(fd);
-loop_failed_dev:
-                udev_device_unref(dev);
+                register_wiimote_device(
+                    udev_monitor_receive_device(mon),
+                    epoll_fd,
+                    &connected_wiimotes,
+                    connected_wiimotes_fds,
+                    connected_wiimotes_uinputs_fds,
+                    connected_wiimotes_states);
             } else { // wiimote loop
                 // continue; // temporarily disabled
                 int wiimote_fd = events[i].data.fd;
@@ -171,7 +213,8 @@ loop_failed_dev:
                 wiimote_state_t *state = &connected_wiimotes_states[wiimote_index];
                 int uinput_fd = connected_wiimotes_uinputs_fds[wiimote_index];
 
-                int r_bytes = read(wiimote_fd, event_buffer, sizeof(event_buffer));
+                ssize_t r_bytes = read(
+                        wiimote_fd, event_buffer, sizeof(event_buffer));
                 if (r_bytes < 0) {
                     if (errno != EAGAIN && errno != EWOULDBLOCK) {
                         perror("read wiimote event");
