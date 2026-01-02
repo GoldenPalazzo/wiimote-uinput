@@ -166,12 +166,12 @@ void handle_status_input_reply(int fd, const char *buf, wiimote_state_t *state) 
         printf("Disconnection from extension detected");
         state->ext_connected = 0;
     }
-    usleep(50000); // necessary sleep
+    // usleep(50000); // necessary sleep
                    // Following a connection or disconnection event on
                    // the Extension Port, data reporting is disabled
                    // and the Data Reporting Mode must be reset before
                    // new data can arrive.
-    wiimote_change_mode(fd, DATA_REP_COREEXT8);
+    // wiimote_change_mode(fd, DATA_REP_COREEXT8);
 }
 
 int handle_wiimote_event(
