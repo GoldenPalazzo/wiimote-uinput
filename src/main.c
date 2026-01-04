@@ -220,12 +220,32 @@ int main(int argc, char *argv[]) {
                 if (events[i].events & EPOLLOUT && state->initialized == 0) {
                     LOG_INFO("Initializing Wiimote...", wiimote_fd);
                     write(wiimote_fd, (char[]){STATUS_INFO_REQUEST, 0x00}, 2);
+                    // todo: should check it's properly initialized...
                 }
 
                 int uinput_fd = connected_wiimotes_uinputs_fds[wiimote_index];
 
-                ssize_t r_bytes = read(
-                        wiimote_fd, event_buffer, sizeof(event_buffer));
+                ssize_t r_bytes = 1;
+                while (r_bytes > 0) {
+                    r_bytes = read(
+                            wiimote_fd, event_buffer, sizeof(event_buffer));
+                    // char debug_log_event[128];
+                    // char *p = debug_log_event;
+                    // size_t remaining = sizeof(debug_log_event);
+                    // for (int k=0; k<r_bytes; k++) {
+                    //     int written = snprintf(p,
+                    //         remaining, "%02hhx ", event_buffer[k]);
+                    //     remaining -= written;
+                    //     p += written;
+                    // }
+                    // LOG_INFO("Wiimote event (%d bytes): %s", r_bytes, debug_log_event);
+                    if (handle_wiimote_event(
+                        wiimote_fd, state, event_buffer, 0) < 0) {
+                        LOG_ERROR("Failed to handle wiimote event.");
+                        continue;
+                    }
+                    wiimote_to_uinput(state, uinput_fd);
+                }
                 if (r_bytes < 0) {
                     // perror("read wiimote event");
                     if (events[i].events & (EPOLLERR | EPOLLHUP)) {
@@ -248,29 +268,12 @@ int main(int argc, char *argv[]) {
                         epoll_ctl(epoll_fd, EPOLL_CTL_DEL, wiimote_fd, NULL);
                     } else if (errno != EAGAIN) {
                         LOG_ERROR("Failed to read wiimote event %d", errno);
+                    } else if (errno == EAGAIN) {
+                        LOG_DEBUG("No more data to read from wiimote fd %d", wiimote_fd);
                     }
-                    continue;
                 } else if (r_bytes == 0) {
                     LOG_ERROR("unhandled: read 0 bytes from wiimote fd %d", wiimote_fd);
-                    continue;
                 }
-
-                // char debug_log_event[128];
-                // char *p = debug_log_event;
-                // size_t remaining = sizeof(debug_log_event);
-                // for (int k=0; k<r_bytes; k++) {
-                //     int written = snprintf(p,
-                //         remaining, "%02hhx ", event_buffer[k]);
-                //     remaining -= written;
-                //     p += written;
-                // }
-                // LOG_INFO("Wiimote event (%d bytes): %s", r_bytes, debug_log_event);
-                if (handle_wiimote_event(
-                    wiimote_fd, state, event_buffer, 0) < 0) {
-                    LOG_ERROR("Failed to handle wiimote event.");
-                    continue;
-                }
-                wiimote_to_uinput(state, uinput_fd);
             }
         }
     }
