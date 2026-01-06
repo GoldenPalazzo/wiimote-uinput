@@ -12,7 +12,7 @@
 #define NUNCHUCK_MIN 0
 #define NUNCHUCK_MAX 255
 
-void emit(int fd, int type, int code, int val) {
+int emit(int fd, int type, int code, int val) {
     struct input_event ie = {
         .type = type,
         .code = code,
@@ -25,8 +25,8 @@ void emit(int fd, int type, int code, int val) {
     int res = write(fd, &ie, sizeof(ie));
     if (res < 0) {
         perror("write fallita");
-        exit(res);
     }
+    return res;
 }
 
 // void press_btn(int fd, int code) {
