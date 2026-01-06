@@ -87,14 +87,14 @@ int wiimote_change_mode(int fd, wiimote_report_type_t intype) {
 int decrypt_extension(int fd) {
     int ret = 0;
     char buf[22] = {
-        0x16, // write
+        WRITE_MEMREG_REQUEST, // write
         0x04, // addr space (in this case control registers)
         0xa4, 0x00, 0xf0, // first encryption address
         0x01, 0x55, // size and data
                     // 7 bytes written
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00
+        0x00 // padding
     };
     LOG_INFO("Attempting to decrypt extension (1/2)");
     ret = send_msg(fd, buf, 22); // some kind of ack of type 0x22 is sent but
@@ -104,8 +104,8 @@ int decrypt_extension(int fd) {
         LOG_ERROR("Error writing to extension control registers");
         return ret;
     }
-    buf[4] = 0xfb;
-    buf[6] = 0x00;
+    buf[4] = 0xfb; // new address
+    buf[6] = 0x00; // new data
     LOG_INFO("Attempting to decrypt extension (2/2)");
     ret = send_msg(fd, buf, 22);
     if (ret < 0) {
