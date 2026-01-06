@@ -27,12 +27,31 @@ static inline int is_wiimote(struct hidraw_devinfo *info) {
                 info->product == 0x0306 || info->product == 0x0330));
 }
 
+typedef struct {
+    int hidraw_fd;
+    int uinput_fd;
+    wiimote_state_t state;
+    int active;
+    char dev_path[256];
+} wiimote_context_t;
+
+void cleanup_wiimote_context(wiimote_context_t *ctx) {
+    if (ctx->hidraw_fd >= 0) {
+        close(ctx->hidraw_fd);
+        ctx->hidraw_fd = -1;
+    }
+    if (ctx->uinput_fd >= 0) {
+        destroy_uinput_device(ctx->uinput_fd);
+        ctx->uinput_fd = -1;
+    }
+    ctx->active = 0;
+    memset(&ctx->state, 0, sizeof(wiimote_state_t));
+    memset(ctx->dev_path, 0, sizeof(ctx->dev_path));
+}
+
 int register_wiimote_device(struct udev_device *dev,
         int epoll_fd,
-        int *connected_wiimotes,
-        int connected_wiimotes_fds[],
-        int connected_wiimotes_uinputs_fds[],
-        wiimote_state_t connected_wiimotes_states[]) {
+        wiimote_context_t *wiimotes) {
     int ret = 0;
     struct epoll_event ev;
     struct hidraw_devinfo info;
@@ -65,7 +84,14 @@ int register_wiimote_device(struct udev_device *dev,
         ret = -1;
         goto reg_wiimote_failed_wiimote;
     }
-    if (*connected_wiimotes+1 > MAX_WIIMOTES) {
+    wiimote_context_t *wm = NULL;
+    for (size_t i=0; i<MAX_WIIMOTES; i++) {
+        if (wiimotes[i].active == 0) {
+            wm = &wiimotes[i];
+            break;
+        }
+    }
+    if (wm == NULL) {
         LOG_INFO("  Maximum number of connected Wiimotes reached (%d).", MAX_WIIMOTES);
         // todo: should implement a routine to
         // disconnect the connecting wiimote...
@@ -80,18 +106,18 @@ int register_wiimote_device(struct udev_device *dev,
         goto reg_wiimote_failed_wiimote;
     }
     LOG_INFO("  Wiimote device added to epoll.");
-    connected_wiimotes_uinputs_fds[*connected_wiimotes] =
+    wm->uinput_fd =
         create_uinput_device();
-    if (connected_wiimotes_uinputs_fds[*connected_wiimotes] < 0) {
+    if (wm->uinput_fd < 0) {
         perror("create_uinput_device");
         ret = -1;
         goto reg_wiimote_failed_wiimote;
     }
-    connected_wiimotes_states[*connected_wiimotes] =
+    wm->state =
         (wiimote_state_t){0};
-    connected_wiimotes_fds[*connected_wiimotes] = fd;
-    (*connected_wiimotes)++;
-    LOG_INFO("  Wiimote connected (fd %d)! Total connected: %d", fd, *connected_wiimotes);
+    wm->hidraw_fd = fd;
+    wm->active = 1;
+    LOG_INFO("  Wiimote connected (fd %d)! Total connected: %d", fd, (wm-wiimotes)+1);
     goto reg_wiimote_success;
 
 reg_wiimote_failed_wiimote:
@@ -156,10 +182,14 @@ int main(int argc, char *argv[]) {
     }
     LOG_INFO("Udev monitor added to epoll.");
 
-    int connected_wiimotes = 0;
-    int connected_wiimotes_fds[MAX_WIIMOTES] = {-1, -1, -1, -1};
-    int connected_wiimotes_uinputs_fds[MAX_WIIMOTES] = {-1, -1, -1, -1};
-    wiimote_state_t connected_wiimotes_states[MAX_WIIMOTES] = {0};
+    // int connected_wiimotes = 0;
+    // int connected_wiimotes_fds[MAX_WIIMOTES] = {-1, -1, -1, -1};
+    // int connected_wiimotes_uinputs_fds[MAX_WIIMOTES] = {-1, -1, -1, -1};
+    // wiimote_state_t connected_wiimotes_states[MAX_WIIMOTES] = {0};
+
+    wiimote_context_t wiimote_contexts[MAX_WIIMOTES];
+    for (size_t i=0; i<MAX_WIIMOTES; i++)
+        cleanup_wiimote_context(wiimote_contexts+i);
 
     struct udev_enumerate *enumerate = udev_enumerate_new(udev);
     udev_enumerate_add_match_subsystem(enumerate, "hidraw");
@@ -172,10 +202,8 @@ int main(int argc, char *argv[]) {
         LOG_INFO("Found device: %s", path);
         register_wiimote_device(dev,
             epoll_fd,
-            &connected_wiimotes,
-            connected_wiimotes_fds,
-            connected_wiimotes_uinputs_fds,
-            connected_wiimotes_states);
+            wiimote_contexts
+        );
     }
 
     signal(SIGINT, sigint_handler);
@@ -197,38 +225,33 @@ int main(int argc, char *argv[]) {
                 register_wiimote_device(
                     udev_monitor_receive_device(mon),
                     epoll_fd,
-                    &connected_wiimotes,
-                    connected_wiimotes_fds,
-                    connected_wiimotes_uinputs_fds,
-                    connected_wiimotes_states);
+                    wiimote_contexts);
             } else { // wiimote loop
                 // continue; // temporarily disabled
-                int wiimote_fd = events[i].data.fd;
-                int wiimote_index = -1;
-                for (int j=0; j<connected_wiimotes; j++) {
-                    if (connected_wiimotes_fds[j] == wiimote_fd) {
-                        wiimote_index = j;
+                int ev_fd = events[i].data.fd;
+                wiimote_context_t *wm = NULL;
+                for (int j=0; j<MAX_WIIMOTES; j++) {
+                    if (wiimote_contexts[j].active
+                        && wiimote_contexts[j].hidraw_fd == ev_fd) {
+                        wm = wiimote_contexts+j;
                         break;
                     }
                 }
-                if (wiimote_index == -1) {
-                    LOG_ERROR("Unknown wiimote fd %d", wiimote_fd);
+                if (wm == NULL) {
+                    LOG_ERROR("Unknown wiimote fd %d", ev_fd);
                     continue;
                 }
 
-                wiimote_state_t *state = &connected_wiimotes_states[wiimote_index];
-                if (events[i].events & EPOLLOUT && state->initialized == 0) {
-                    LOG_INFO("Initializing Wiimote...", wiimote_fd);
-                    write(wiimote_fd, (char[]){STATUS_INFO_REQUEST, 0x00}, 2);
+                if (events[i].events & EPOLLOUT && wm->state.initialized == 0) {
+                    LOG_INFO("Initializing Wiimote...", wm->hidraw_fd);
+                    write(wm->hidraw_fd, (char[]){STATUS_INFO_REQUEST, 0x00}, 2);
                     // todo: should check it's properly initialized...
                 }
-
-                int uinput_fd = connected_wiimotes_uinputs_fds[wiimote_index];
 
                 ssize_t r_bytes = 1;
                 while (r_bytes > 0) {
                     r_bytes = read(
-                            wiimote_fd, event_buffer, sizeof(event_buffer));
+                            wm->hidraw_fd, event_buffer, sizeof(event_buffer));
                     // char debug_log_event[128];
                     // char *p = debug_log_event;
                     // size_t remaining = sizeof(debug_log_event);
@@ -240,39 +263,40 @@ int main(int argc, char *argv[]) {
                     // }
                     // LOG_INFO("Wiimote event (%d bytes): %s", r_bytes, debug_log_event);
                     if (handle_wiimote_event(
-                        wiimote_fd, state, event_buffer, 0) < 0) {
+                        wm->hidraw_fd, &wm->state, event_buffer, 0) < 0) {
                         LOG_ERROR("Failed to handle wiimote event.");
                         continue;
                     }
-                    wiimote_to_uinput(state, uinput_fd);
+                    wiimote_to_uinput(&wm->state, wm->uinput_fd);
                 }
                 if (r_bytes < 0) {
                     // perror("read wiimote event");
                     if (events[i].events & (EPOLLERR | EPOLLHUP)) {
                         LOG_ERROR("epoll wiimote error detected, disconnecting.");
                         LOG_INFO("Wiimote disconnected (read %d bytes).", r_bytes);
-                        close(wiimote_fd);
-                        destroy_uinput_device(uinput_fd);
-                        for (int k=wiimote_index; k<connected_wiimotes-1; k++) {
-                            connected_wiimotes_fds[k] = connected_wiimotes_fds[k+1];
-                            connected_wiimotes_uinputs_fds[k] =
-                                connected_wiimotes_uinputs_fds[k+1];
-                            connected_wiimotes_states[k] =
-                                connected_wiimotes_states[k+1];
-                            // todo: update lights on wiimotes
-                        }
-                        connected_wiimotes_fds[connected_wiimotes-1] = -1;
-                        connected_wiimotes_uinputs_fds[connected_wiimotes-1] = -1;
-                        connected_wiimotes_states[connected_wiimotes-1] = (wiimote_state_t){0};
-                        connected_wiimotes--;
-                        epoll_ctl(epoll_fd, EPOLL_CTL_DEL, wiimote_fd, NULL);
+                        // close(wiimote_fd);
+                        // destroy_uinput_device(uinput_fd);
+                        // for (int k=wiimote_index; k<connected_wiimotes-1; k++) {
+                        //     connected_wiimotes_fds[k] = connected_wiimotes_fds[k+1];
+                        //     connected_wiimotes_uinputs_fds[k] =
+                        //         connected_wiimotes_uinputs_fds[k+1];
+                        //     connected_wiimotes_states[k] =
+                        //         connected_wiimotes_states[k+1];
+                        //     // todo: update lights on wiimotes
+                        // }
+                        // connected_wiimotes_fds[connected_wiimotes-1] = -1;
+                        // connected_wiimotes_uinputs_fds[connected_wiimotes-1] = -1;
+                        // connected_wiimotes_states[connected_wiimotes-1] = (wiimote_state_t){0};
+                        // connected_wiimotes--;
+                        epoll_ctl(epoll_fd, EPOLL_CTL_DEL, wm->hidraw_fd, NULL);
+                        cleanup_wiimote_context(wm);
                     } else if (errno != EAGAIN) {
                         LOG_ERROR("Failed to read wiimote event %d", errno);
                     } else if (errno == EAGAIN) {
-                        LOG_DEBUG("No more data to read from wiimote fd %d", wiimote_fd);
+                        LOG_DEBUG("No more data to read from wiimote fd %d", wm->hidraw_fd);
                     }
                 } else if (r_bytes == 0) {
-                    LOG_ERROR("unhandled: read 0 bytes from wiimote fd %d", wiimote_fd);
+                    LOG_ERROR("unhandled: read 0 bytes from wiimote fd %d", wm->hidraw_fd);
                 }
             }
         }
