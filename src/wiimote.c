@@ -178,8 +178,7 @@ void handle_status_input_reply(int fd, const char *buf, wiimote_state_t *state) 
 int handle_wiimote_event(
         int fd,
         wiimote_state_t *state,
-        const char *event_buffer,
-        int debug
+        const char *event_buffer
         ) {
     int ret = 0;
     switch (event_buffer[0]) {
@@ -225,7 +224,7 @@ int handle_wiimote_event(
             break;
     }
 
-    if (debug) {
+    if (0) { // todo: fix later
         print_wiimote_state(state);
         print_nunchuck_state(&state->nunchuck);
     }

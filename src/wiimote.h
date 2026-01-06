@@ -73,8 +73,7 @@ int connect_wiimote(const char *device_path, wiimote_state_t *initial_state);
 int handle_wiimote_event(
         int fd,
         wiimote_state_t *state,
-        const char *event_buffer,
-        int debug
+        const char *event_buffer
         );
 #endif
 
