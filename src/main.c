@@ -57,6 +57,18 @@ int main(int argc, char *argv[]) {
     struct epoll_event ev, events[10];
     wiimote_context_t wiimote_contexts[MAX_WIIMOTES] = {0};
 
+    if (access("/dev/uinput", F_OK) < 0) {
+        LOG_ERROR("/dev/uinput not found. Is uinput module loaded?");
+        ret = 1;
+        goto failed;
+    }
+
+    if (access("/dev/uinput", W_OK) < 0) {
+        LOG_ERROR("No write access to /dev/uinput. Make a udev rule or run as root.");
+        ret = 1;
+        goto failed;
+    }
+
     if (setup_udev_monitor(&udev, &mon) < 0) {
         ret = 1;
         goto failed;
