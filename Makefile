@@ -31,5 +31,3 @@ clean:
 $(BUILD_FOLDER):
 	mkdir -p $(BUILD_FOLDER)
 
-udev_test: udev_test.c
-	$(CC) $(CFLAGS) -o $@ $^ -ludev
