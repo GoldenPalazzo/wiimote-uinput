@@ -10,7 +10,7 @@ SRC_FOLDER = src
 BUILD_FOLDER = build
 SOURCES = $(wildcard src/*.c)
 OBJECTS = $(patsubst $(SRC_FOLDER)/%.c,$(BUILD_FOLDER)/%.o,$(SOURCES))
-BIN = $(BUILD_FOLDER)/wii2xb.bin
+BIN = $(BUILD_FOLDER)/wiimote-uinput
 
 .PHONY: all debug clean
 
