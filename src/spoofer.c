@@ -38,6 +38,7 @@ int create_uinput_device(void) {
 
     ioctl(fd, UI_SET_EVBIT, EV_KEY);
     ioctl(fd, UI_SET_EVBIT, EV_ABS);
+    ioctl(fd, UI_SET_EVBIT, EV_FF);
 
     ioctl(fd, UI_SET_KEYBIT, BTN_SOUTH);
     ioctl(fd, UI_SET_KEYBIT, BTN_EAST);
@@ -67,10 +68,13 @@ int create_uinput_device(void) {
     ioctl(fd, UI_SET_ABSBIT, ABS_RZ);
     ioctl(fd, UI_SET_ABSBIT, ABS_Z);
 
+    ioctl(fd, UI_SET_FFBIT, FF_RUMBLE);
+
     memset(&usetup, 0, sizeof(usetup));
     usetup.id.bustype = BUS_USB;
     usetup.id.vendor = 0x045e;
     usetup.id.product = 0x028e;
+    usetup.ff_effects_max = 16;
     strcpy(usetup.name, "Xbox 360 Wireless Controller");
 
     memset(&abs_setup, 0, sizeof(abs_setup));

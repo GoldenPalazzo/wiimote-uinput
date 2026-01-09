@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <signal.h>
 
+#include <linux/uinput.h>
 #include <linux/hidraw.h>
 #include <libudev.h>
 #include <sys/epoll.h>
@@ -237,6 +238,14 @@ int main(int argc, char *argv[]) {
                 } else if (r_bytes == 0) {
                     LOG_ERROR("unhandled: read 0 bytes from wiimote fd %d",
                             wm->hidraw_fd);
+                }
+
+                struct input_event ff_ev;
+                while (read(wm->uinput_fd, &ff_ev, sizeof(ff_ev)) > 0) {
+                    LOG_DEBUG("Read event from uinput fd %d: "
+                            "type=%hu code=%hu value=%d",
+                            wm->uinput_fd,
+                            ff_ev.type, ff_ev.code, ff_ev.value);
                 }
             }
         }
