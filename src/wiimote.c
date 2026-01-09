@@ -332,9 +332,15 @@ int handle_wiimote_event(
             LOG_DEBUG("    Read reply: size=%hhx offset=%04x errors=%hhx",
                     size, abs_offset, errors);
             if (errors == 7) {
-                LOG_ERROR("    Attempted reading write-only register %04x",
-                        abs_offset);
-                ret = -1;
+                if (size != 17) {
+                    LOG_DEBUG("    Attempted reading write-only register %04x"
+                              " (innocuous)",
+                            abs_offset);
+                } else {
+                    LOG_ERROR("    Attempted reading write-only register %04x",
+                            abs_offset);
+                    ret = -1;
+                }
                 break;
             } else if (errors == 8) {
                 LOG_ERROR("    Attempted reading nonexistent register %04x",
