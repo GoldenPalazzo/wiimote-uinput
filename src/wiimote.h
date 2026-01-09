@@ -14,11 +14,13 @@ enum extension_status {
     EXT_CLASSIC_CONTROLLER,
 };
 
+#define NUNCHUCK_SIGNATURE 0xA4200000
 typedef struct {
     uint16_t sx, sy;
     uint8_t c, z;
 } nunchuck_state_t;
 
+#define CC_SIGNATURE       0xA4200101
 typedef struct {
     uint8_t data_format;
     uint16_t lx, ly, rx, ry;
@@ -29,25 +31,13 @@ typedef struct {
     uint8_t home, plus, minus;
 } classic_controller_state_t;
 
-#define WII_BTN_LEFT(b) ((b).buttons & 0x0100)
-#define WII_BTN_RIGHT(b) ((b).buttons & 0x0200)
-#define WII_BTN_DOWN(b) ((b).buttons & 0x0400)
-#define WII_BTN_UP(b) ((b).buttons & 0x0800)
-#define WII_BTN_PLUS(b) ((b).buttons & 0x1000)
-#define WII_BTN_MINUS(b) ((b).buttons & 0x0010)
-#define WII_BTN_A(b) ((b).buttons & 0x0008)
-#define WII_BTN_B(b) ((b).buttons & 0x0004)
-#define WII_BTN_HOME(b) ((b).buttons & 0x0080)
-#define WII_BTN_1(b) ((b).buttons & 0x0002)
-#define WII_BTN_2(b) ((b).buttons & 0x0001)
+
 #define WII_LED_ONEHOT(b) ((b).status_flags >> 0x08)
 #define WII_FLAG_EXT_CONNECTED(b) ((b).status_flags & 0x02)
-
-#define NUNCHUCK_SIGNATURE 0xA4200000
-#define CC_SIGNATURE       0xA4200101
-
 typedef struct {
-    uint16_t buttons;
+    uint8_t btn_a, btn_b, btn_1, btn_2;
+    uint8_t btn_plus, btn_minus, btn_home;
+    uint8_t btn_up, btn_down, btn_left, btn_right;
 
     enum extension_status ext_status;
     nunchuck_state_t nunchuck;

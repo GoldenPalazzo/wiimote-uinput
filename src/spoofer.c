@@ -120,21 +120,24 @@ void wiimote_to_uinput(const wiimote_state_t *wiimote, int uinput_fd) {
         return;
     }
     if (wiimote->ext_status != EXT_CLASSIC_CONTROLLER) {
-        emit(uinput_fd, EV_KEY, BTN_SOUTH, WII_BTN_A(*wiimote));
-        emit(uinput_fd, EV_KEY, BTN_EAST, WII_BTN_B(*wiimote));
-        emit(uinput_fd, EV_KEY, BTN_WEST, !!WII_BTN_1(*wiimote));
-        emit(uinput_fd, EV_KEY, BTN_NORTH, WII_BTN_2(*wiimote));
-        emit(uinput_fd, EV_KEY, BTN_DPAD_UP, WII_BTN_UP(*wiimote));
-        emit(uinput_fd, EV_KEY, BTN_DPAD_DOWN, WII_BTN_DOWN(*wiimote));
-        emit(uinput_fd, EV_KEY, BTN_DPAD_LEFT, WII_BTN_LEFT(*wiimote));
-        emit(uinput_fd, EV_KEY, BTN_DPAD_RIGHT, WII_BTN_RIGHT(*wiimote));
-        emit(uinput_fd, EV_KEY, BTN_START, WII_BTN_PLUS(*wiimote));
-        emit(uinput_fd, EV_KEY, BTN_SELECT, WII_BTN_MINUS(*wiimote));
+        emit(uinput_fd, EV_KEY, BTN_SOUTH, wiimote->btn_a);
+        emit(uinput_fd, EV_KEY, BTN_EAST, wiimote->btn_b);
+        emit(uinput_fd, EV_KEY, BTN_WEST, wiimote->btn_1);
+        emit(uinput_fd, EV_KEY, BTN_NORTH, wiimote->btn_2);
+        emit(uinput_fd, EV_KEY, BTN_DPAD_UP, wiimote->btn_up);
+        emit(uinput_fd, EV_KEY, BTN_DPAD_DOWN, wiimote->btn_down);
+        emit(uinput_fd, EV_KEY, BTN_DPAD_LEFT, wiimote->btn_left);
+        emit(uinput_fd, EV_KEY, BTN_DPAD_RIGHT, wiimote->btn_right);
+        emit(uinput_fd, EV_KEY, BTN_START, wiimote->btn_plus);
+        emit(uinput_fd, EV_KEY, BTN_SELECT, wiimote->btn_minus);
+        emit(uinput_fd, EV_KEY, BTN_MODE, wiimote->btn_home);
     }
     switch (wiimote->ext_status) {
         case EXT_NUNCHUCK:
             emit(uinput_fd, EV_ABS, ABS_X, wiimote->nunchuck.sx - 512);
             emit(uinput_fd, EV_ABS, ABS_Y, 512 - wiimote->nunchuck.sy);
+            emit(uinput_fd, EV_KEY, BTN_TL, wiimote->nunchuck.z);
+            emit(uinput_fd, EV_KEY, BTN_TR, wiimote->nunchuck.c);
             break;
         case EXT_CLASSIC_CONTROLLER:
             emit(uinput_fd,

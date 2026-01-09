@@ -12,6 +12,12 @@
 #define HIDIOCGFEATURE(len)    _IOC(_IOC_WRITE|_IOC_READ, 'H', 0x07, len)
 #endif
 
+#ifdef __clang__
+#define NULLABLE _Nullable
+#else
+#define NULLABLE
+#endif
+
 /* Unix */
 #include <sys/ioctl.h>
 #include <sys/types.h>
@@ -139,7 +145,27 @@ detect_end:
     return ret;
 }
 
-// Parsers``
+// Parsers
+
+void parse_wiimote(
+        const uint8_t * NULLABLE btns_buf,
+        const uint8_t * NULLABLE acc_buf,
+        const uint8_t * NULLABLE ir_buf,
+        wiimote_state_t *wm_state) {
+    if (btns_buf != NULL) {
+        wm_state->btn_up = (btns_buf[0] & 0x08) >> 3;
+        wm_state->btn_down = (btns_buf[0] & 0x04) >> 2;
+        wm_state->btn_right = (btns_buf[0] & 0x02) >> 1;
+        wm_state->btn_left = (btns_buf[0] & 0x01);
+        wm_state->btn_minus = (btns_buf[1] & 0x10) >> 4;
+        wm_state->btn_plus = (btns_buf[0] & 0x10) >> 4;
+        wm_state->btn_home = (btns_buf[1] & 0x80) >> 7;
+        wm_state->btn_a = (btns_buf[1] & 0x08) >> 3;
+        wm_state->btn_b = (btns_buf[1] & 0x04) >> 2;
+        wm_state->btn_1 = (btns_buf[1] & 0x02) >> 1;
+        wm_state->btn_2 = (btns_buf[1] & 0x01);
+    }
+}
 
 void parse_nunchuck(const uint8_t *nc_buf, nunchuck_state_t *nc_state) {
     nc_state->sx = nc_buf[0] * 1023/255;
@@ -214,8 +240,8 @@ void handle_status_input_reply(
         ) {
     state->initialized = 1;
     state->status_flags = buf[3];
-    state->buttons = BITMASK_COREBTNS(buf[1], buf[2]);
     state->battery = buf[7];
+    parse_wiimote(buf+1, NULL, NULL, state);
 
     if (WII_FLAG_EXT_CONNECTED(*state)
         && state->ext_status == EXT_NONE) {
@@ -248,19 +274,19 @@ int handle_wiimote_event(
         // accel not implemented yet
         case DATA_REP_COREACC:
         case DATA_REP_COREACCIR12:
-            state->buttons = BITMASK_COREBTNS(event_buffer[1], event_buffer[2]);
+            parse_wiimote(event_buffer+1, NULL, NULL, state);
             break;
         case DATA_REP_COREEXT8:
-            state->buttons = BITMASK_COREBTNS(event_buffer[1], event_buffer[2]);
+            parse_wiimote(event_buffer+1, NULL, NULL, state);
             parse_generic(event_buffer+3, state);
             break;
         case DATA_REP_COREIR10EXT9:
-            state->buttons = BITMASK_COREBTNS(event_buffer[1], event_buffer[2]);
+            parse_wiimote(event_buffer+1, NULL, NULL, state);
             // parse ir data (not implemented here)
             parse_generic(event_buffer+13, state);
             break;
         case DATA_REP_COREACCIR10EXT6:
-            state->buttons = BITMASK_COREBTNS(event_buffer[1], event_buffer[2]);
+            parse_wiimote(event_buffer+1, NULL, NULL, state);
             // parse accelerometer data (not implemented here)
             parse_generic(event_buffer+16, state);
             break;
@@ -272,7 +298,7 @@ int handle_wiimote_event(
                 msgs, state, event_buffer);
             break;
         case ACK_OUT_RETURN:
-            state->buttons = BITMASK_COREBTNS(event_buffer[1], event_buffer[2]);
+            parse_wiimote(event_buffer+1, NULL, NULL, state);
             if (event_buffer[4] == 0x03) {
                 LOG_ERROR("Wiimote sent error for command %hhx (%hhx)",
                     event_buffer[3], event_buffer[4]);
@@ -295,7 +321,7 @@ int handle_wiimote_event(
             }
             break;
         case READ_MEMREG_REPLY:
-            state->buttons = BITMASK_COREBTNS(event_buffer[1], event_buffer[2]);
+            parse_wiimote(event_buffer+1, NULL, NULL, state);
             uint8_t se = event_buffer[3];
             uint8_t errors = se & 0xf;
             uint8_t size = ((se >> 4) & 0xf) + 1;
