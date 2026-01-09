@@ -278,6 +278,9 @@ int handle_wiimote_event(
             parse_wiimote(event_buffer+1, NULL, NULL, state);
             parse_generic(event_buffer+3, state);
             break;
+        case DATA_REP_COREACC16:
+            parse_wiimote(event_buffer+1, NULL, NULL, state);
+            parse_generic(event_buffer+6, state);
         case DATA_REP_COREIR10EXT9:
             parse_wiimote(event_buffer+1, NULL, NULL, state);
             // parse ir data (not implemented here)
