@@ -137,9 +137,10 @@ int main(int argc, char *argv[]) {
     int n_events, i;
     uint8_t event_buffer[64];
     while (keep_running) {
-        n_events = epoll_wait(epoll_fd, events, 10, 1000);
-        LOG_DEBUG("Epoll wait returned %d events.", n_events);
+        n_events = epoll_wait(epoll_fd, events, 10, 30000);
+        // LOG_DEBUG("Epoll wait returned %d events.", n_events);
         if (n_events < 0) {
+            LOG_ERROR("epoll_wait failed. (errno=%d)", errno);
             perror("epoll_wait");
             ret = 1;
             break;
@@ -229,9 +230,9 @@ int main(int argc, char *argv[]) {
                     } else if (errno != EAGAIN) {
                         LOG_ERROR("Failed to read wiimote event %d", errno);
                     } else if (errno == EAGAIN) {
-                        LOG_DEBUG(
-                                "No more data to read from wiimote fd %d",
-                                wm->hidraw_fd);
+                        // LOG_DEBUG(
+                        //         "No more data to read from wiimote fd %d",
+                        //         wm->hidraw_fd);
                     }
                 } else if (r_bytes == 0) {
                     LOG_ERROR("unhandled: read 0 bytes from wiimote fd %d",

@@ -33,8 +33,6 @@
 #include "wiimote.h"
 #include "logger.h"
 
-#define BITMASK_COREBTNS(high, low) ((uint8_t)high << 8) | (uint8_t)low
-
 typedef enum {
     RUMBLE = 0x10,
     LEDS,
