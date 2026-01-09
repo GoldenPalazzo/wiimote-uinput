@@ -303,9 +303,10 @@ int register_wiimote_device(struct udev_device *dev,
         goto reg_wiimote_failed_wiimote;
     }
     wiimote_context_t *wm = NULL;
-    for (size_t i=0; i<MAX_WIIMOTES; i++) {
-        if (wiimotes[i].active == 0) {
-            wm = &wiimotes[i];
+    size_t index;
+    for (index=0; index<MAX_WIIMOTES; index++) {
+        if (wiimotes[index].active == 0) {
+            wm = &wiimotes[index];
             break;
         }
     }
@@ -337,6 +338,10 @@ int register_wiimote_device(struct udev_device *dev,
     wm->hidraw_fd = fd;
     wm->active = 1;
     LOG_INFO("  Wiimote connected (fd %d)! Total connected: %d", fd, (wm-wiimotes)+1);
+    enqueue_msg(
+            &wm->msg_queue,
+            (uint8_t[]){0x11, (uint8_t)(0x10 << index)},
+            2);
     enqueue_msg(
             &wm->msg_queue,
             (uint8_t[]){0x15, 0x00},
