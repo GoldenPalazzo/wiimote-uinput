@@ -2,6 +2,7 @@
 #include "wiimote.h"
 #include "logger.h"
 
+#include <argp.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -22,6 +23,27 @@ void sigint_handler(int _) {
     keep_running = 0;
 }
 
+static int parse_opt(int key, char *arg, struct argp_state *state) {
+    UNUSED(arg);
+    UNUSED(state);
+    switch (key) {
+        case 'v':
+            enable_module(LOG_LEVEL_DEBUG);
+            break;
+        case ARGP_KEY_END:
+            break;
+        default:
+            return ARGP_ERR_UNKNOWN;
+    }
+    return 0;
+}
+const struct argp_option options[] = {
+    {0, 'v', 0, 0, "Enable verbose output"},
+    {0}
+};
+const char *argp_program_version =
+    "wiimote-uinput 0.1";
+
 static inline int is_wiimote(struct hidraw_devinfo *info) {
     return (info->vendor == 0x057e && (
                 info->product == 0x0306 || info->product == 0x0330));
@@ -30,9 +52,11 @@ static inline int is_wiimote(struct hidraw_devinfo *info) {
 typedef struct {
     int hidraw_fd;
     int uinput_fd;
-    wiimote_state_t state;
-    int active;
+    uint8_t hid_writable;
     char dev_path[256];
+    int8_t active;
+    wiimote_state_t state;
+    msg_queue_t msg_queue;
 } wiimote_context_t;
 
 void cleanup_wiimote_context(wiimote_context_t *ctx);
@@ -46,9 +70,15 @@ int init_connected_wiimotes(struct udev *udev,
         wiimote_context_t *wiimote_contexts);
 
 int main(int argc, char *argv[]) {
-    UNUSED(argc);
-    UNUSED(argv);
+    const struct argp arguments = {
+        .options = options,
+        .parser = parse_opt,
+        .doc = "Wiimote to uinput",
+    };
+    argp_parse(&arguments, argc, argv, 0, 0, 0);
+
     enable_module(LOG_LEVEL_INFO);
+    enable_module(LOG_LEVEL_WARN);
     enable_module(LOG_LEVEL_ERROR);
 
     int ret = 0, mon_fd, epoll_fd;
@@ -105,7 +135,7 @@ int main(int argc, char *argv[]) {
 
     signal(SIGINT, sigint_handler);
     int n_events, i;
-    char event_buffer[64];
+    uint8_t event_buffer[64];
     while (keep_running) {
         n_events = epoll_wait(epoll_fd, events, 10, 1000);
         LOG_DEBUG("Epoll wait returned %d events.", n_events);
@@ -119,6 +149,7 @@ int main(int argc, char *argv[]) {
 
         for (i=0; i<n_events; i++) {
             if (events[i].data.fd == mon_fd) { // udev monitor loop
+                LOG_DEBUG("Udev monitor event detected.");
                 register_wiimote_device(
                     udev_monitor_receive_device(mon),
                     epoll_fd,
@@ -138,18 +169,49 @@ int main(int argc, char *argv[]) {
                     continue;
                 }
 
-                if (events[i].events & EPOLLOUT && wm->state.initialized == 0) {
-                    LOG_INFO("Initializing Wiimote...", wm->hidraw_fd);
-                    write(wm->hidraw_fd, (char[]){STATUS_INFO_REQUEST, 0x00}, 2);
-                    // todo: should check it's properly initialized...
+                if (events[i].events & EPOLLOUT) {
+                    LOG_DEBUG("Wiimote fd %d ready for writing.", wm->hidraw_fd);
+                    wm->hid_writable = 1;
+                }
+                while (wm->hid_writable
+                       && wm->msg_queue.count > 0) {
+                    const msg_t *msg = &wm->msg_queue.msgs[wm->msg_queue.head];
+                    ssize_t w_bytes = write(
+                            wm->hidraw_fd,
+                            msg->buf, msg->len);
+                    if (w_bytes < 0) {
+                        if (errno != EAGAIN) {
+                            LOG_ERROR("Failed to write wiimote event %d", errno);
+                        } else if (errno == EAGAIN) {
+                            LOG_DEBUG(
+                                    "Wiimote fd %d not ready for writing.",
+                                    wm->hidraw_fd);
+                            wm->hid_writable = 0;
+                        }
+                    } else {
+                        LOG_DEBUG("Wrote %zd bytes to wiimote fd %d",
+                                w_bytes, wm->hidraw_fd);
+                        pop_msg(&wm->msg_queue, NULL);
+                    }
                 }
 
                 ssize_t r_bytes = 1;
-                while (r_bytes > 0) {
+                if (events[i].events & EPOLLIN)
+                    LOG_DEBUG("Wiimote fd %d ready for reading.", wm->hidraw_fd);
+                while (r_bytes > 0 && (events[i].events & EPOLLIN)) {
                     r_bytes = read(
-                            wm->hidraw_fd, event_buffer, sizeof(event_buffer));
+                            wm->hidraw_fd,
+                            event_buffer, sizeof(event_buffer));
+                    char buf_hex[3*64] = {0};
+                    for (ssize_t k=0; k<r_bytes; k++) {
+                        sprintf(&buf_hex[k*3], "%02x ", event_buffer[k]);
+                    }
+                    LOG_DEBUG("Read %zd bytes from wiimote fd %d: %s",
+                            r_bytes, wm->hidraw_fd, buf_hex);
                     if (handle_wiimote_event(
-                        wm->hidraw_fd, &wm->state, event_buffer) < 0) {
+                            &wm->msg_queue,
+                            &wm->state,
+                            event_buffer) < 0) {
                         LOG_ERROR("Failed to handle wiimote event.");
                         continue;
                     }
@@ -157,17 +219,23 @@ int main(int argc, char *argv[]) {
                 }
                 if (r_bytes < 0) {
                     if (events[i].events & (EPOLLERR | EPOLLHUP)) {
-                        LOG_ERROR("epoll wiimote error detected, disconnecting.");
-                        LOG_INFO("Wiimote disconnected (read %d bytes).", r_bytes);
+                        LOG_ERROR(
+                                "epoll wiimote error detected, disconnecting.");
+                        LOG_INFO(
+                                "Wiimote disconnected (read %d bytes).",
+                                r_bytes);
                         epoll_ctl(epoll_fd, EPOLL_CTL_DEL, wm->hidraw_fd, NULL);
                         cleanup_wiimote_context(wm);
                     } else if (errno != EAGAIN) {
                         LOG_ERROR("Failed to read wiimote event %d", errno);
                     } else if (errno == EAGAIN) {
-                        LOG_DEBUG("No more data to read from wiimote fd %d", wm->hidraw_fd);
+                        LOG_DEBUG(
+                                "No more data to read from wiimote fd %d",
+                                wm->hidraw_fd);
                     }
                 } else if (r_bytes == 0) {
-                    LOG_ERROR("unhandled: read 0 bytes from wiimote fd %d", wm->hidraw_fd);
+                    LOG_ERROR("unhandled: read 0 bytes from wiimote fd %d",
+                            wm->hidraw_fd);
                 }
             }
         }
@@ -177,7 +245,7 @@ failed_epoll:
     close(epoll_fd);
 failed_udev_monitor:
     udev_monitor_unref(mon);
-failed_udev:
+// failed_udev:
     udev_unref(udev);
 failed:
     return ret;
@@ -193,6 +261,7 @@ void cleanup_wiimote_context(wiimote_context_t *ctx) {
         ctx->uinput_fd = -1;
     }
     ctx->active = 0;
+    ctx->hid_writable = 0;
     memset(&ctx->state, 0, sizeof(wiimote_state_t));
     memset(ctx->dev_path, 0, sizeof(ctx->dev_path));
 }
@@ -263,9 +332,14 @@ int register_wiimote_device(struct udev_device *dev,
     }
     wm->state =
         (wiimote_state_t){0};
+    wm->msg_queue = (msg_queue_t){0};
     wm->hidraw_fd = fd;
     wm->active = 1;
     LOG_INFO("  Wiimote connected (fd %d)! Total connected: %d", fd, (wm-wiimotes)+1);
+    enqueue_msg(
+            &wm->msg_queue,
+            (uint8_t[]){0x15, 0x00},
+            2);
     goto reg_wiimote_success;
 
 reg_wiimote_failed_wiimote:
@@ -339,7 +413,7 @@ int init_connected_wiimotes(struct udev *udev,
     }
 init_connected_wiimotes_failed:
     udev_enumerate_unref(enumerate);
-    return 0;
+    return ret;
 }
 
 

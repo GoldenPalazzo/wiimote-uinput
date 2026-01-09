@@ -2,41 +2,32 @@
 #define _GWIIMOTE_H_
 #include <stddef.h>
 #include <stdint.h>
+#include "queue.h"
 
-typedef enum {
-    RUMBLE = 0x10,
-    LEDS,
-    REPORTING_MODE,
-    IR_CAMERA_ENABLE,
-    SPEAKER_ENABLE,
-    STATUS_INFO_REQUEST,
-    WRITE_MEMREG_REQUEST,
-    READ_MEMREG_REQUEST,
-    SPEAKER_DATA,
-    SPEAKER_MUTE,
-    IR_CAMERA_ENABLE_2,
-
-    STATUS_INFO_REPLY = 0x20,
-    READ_MEMREG_REPLY,
-    ACK_OUT_RETURN,
-
-    DATA_REP_COREBTNS = 0x30,
-    DATA_REP_COREACC,
-    DATA_REP_COREEXT8,
-    DATA_REP_COREACCIR12,
-    DATA_REP_COREEXT19,
-    DATA_REP_COREACC16,
-    DATA_REP_COREIR10EXT9,
-    DATA_REP_COREACCIR10EXT6,
-
-    DATA_REP_EXT21 = 0x3D,
-    DATA_REP_INTERLEAVED1,
-    DATA_REP_INTERLEAVED2,
-} wiimote_report_type_t;
+enum extension_status {
+    EXT_NONE,
+    EXT_WAITING_DECRYPTION_0,
+    EXT_WAITING_DECRYPTION_1,
+    EXT_DECRYPTED,
+    EXT_UNKNOWN,
+    EXT_NUNCHUCK,
+    EXT_CLASSIC_CONTROLLER,
+};
 
 typedef struct {
-    uint8_t sx, sy, c, z;
+    uint16_t sx, sy;
+    uint8_t c, z;
 } nunchuck_state_t;
+
+typedef struct {
+    uint8_t data_format;
+    uint16_t lx, ly, rx, ry;
+    uint8_t lt, rt;
+    uint8_t lz, rz;
+    uint8_t du, dd, dl, dr;
+    uint8_t a, b, x, y;
+    uint8_t home, plus, minus;
+} classic_controller_state_t;
 
 #define WII_BTN_LEFT(b) ((b).buttons & 0x0100)
 #define WII_BTN_RIGHT(b) ((b).buttons & 0x0200)
@@ -52,10 +43,15 @@ typedef struct {
 #define WII_LED_ONEHOT(b) ((b).status_flags >> 0x08)
 #define WII_FLAG_EXT_CONNECTED(b) ((b).status_flags & 0x02)
 
+#define NUNCHUCK_SIGNATURE 0xA4200000
+#define CC_SIGNATURE       0xA4200101
+
 typedef struct {
     uint16_t buttons;
-    uint8_t ext_connected;
+
+    enum extension_status ext_status;
     nunchuck_state_t nunchuck;
+    classic_controller_state_t classic_controller;
 
     uint8_t battery;
     uint8_t status_flags;
@@ -63,18 +59,11 @@ typedef struct {
     uint8_t initialized;
 } wiimote_state_t;
 
-typedef enum {
-    DEBUG_TYPE_NONE,
-    DEBUG_TYPE_HID,
-    DEBUG_TYPE_WIIMOTE,
-} debug_type_t;
-
 int connect_wiimote(const char *device_path, wiimote_state_t *initial_state);
 int handle_wiimote_event(
-        int fd,
+        msg_queue_t *msgs,
         wiimote_state_t *state,
-        const char *event_buffer
-        );
-#endif
+        const uint8_t *event_buffer);
 
+#endif // _GWIIMOTE_H_
 
