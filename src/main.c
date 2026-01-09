@@ -16,6 +16,7 @@
 #include <sys/epoll.h>
 
 #define MAX_WIIMOTES 4
+#define MAX_GRABBED_DEVICES 8
 
 #define UNUSED(x) (void)(x)
 static volatile int keep_running = 1;
@@ -58,6 +59,9 @@ typedef struct {
     int8_t active;
     wiimote_state_t state;
     msg_queue_t msg_queue;
+
+    int grabbed_fds[MAX_GRABBED_DEVICES];
+    int num_grabbed_fds;
 } wiimote_context_t;
 
 void cleanup_wiimote_context(wiimote_context_t *ctx);
@@ -69,6 +73,8 @@ int setup_udev_monitor(struct udev **udev_out,
 int init_connected_wiimotes(struct udev *udev,
         int epoll_fd,
         wiimote_context_t *wiimote_contexts);
+void grab_kernel_devices(struct udev_device *hidraw_dev,
+        wiimote_context_t *ctx);
 
 int main(int argc, char *argv[]) {
     const struct argp arguments = {
@@ -347,6 +353,7 @@ int register_wiimote_device(struct udev_device *dev,
     wm->hidraw_fd = fd;
     wm->active = 1;
     LOG_INFO("  Wiimote connected (fd %d)! Total connected: %d", fd, (wm-wiimotes)+1);
+    grab_kernel_devices(dev, wm);
     enqueue_msg(
             &wm->msg_queue,
             (uint8_t[]){0x11, (uint8_t)(0x10 << index)},
@@ -431,4 +438,49 @@ init_connected_wiimotes_failed:
     return ret;
 }
 
+void grab_kernel_devices(struct udev_device *hidraw_dev,
+        wiimote_context_t *ctx) {
+    ctx->num_grabbed_fds = 0;
+    struct udev *udev = udev_device_get_udev(hidraw_dev);
+    struct udev_device *parent = udev_device_get_parent(hidraw_dev);
+    if (!parent) {
+        LOG_ERROR("Cannot get parent device for grabbing.");
+        return;
+    }
 
+    struct udev_enumerate *enumerate = udev_enumerate_new(udev);
+    udev_enumerate_add_match_parent(enumerate, parent);
+    udev_enumerate_add_match_subsystem(enumerate, "input");
+    udev_enumerate_scan_devices(enumerate);
+
+    struct udev_list_entry *devices, *entry;
+    devices = udev_enumerate_get_list_entry(enumerate);
+
+    udev_list_entry_foreach(entry, devices) {
+        const char *path = udev_list_entry_get_name(entry);
+        struct udev_device *input_dev =
+            udev_device_new_from_syspath(udev, path);
+        const char *devnode = udev_device_get_devnode(input_dev);
+        if (devnode) {
+            LOG_INFO("  Grabbing kernel input device: %s", devnode);
+            int fd = open(devnode, O_RDWR | O_NONBLOCK);
+            if (fd >= 0) {
+                if (ioctl(fd, EVIOCGRAB, 1) == 0) {
+                    if (ctx->num_grabbed_fds < MAX_GRABBED_DEVICES) {
+                        ctx->grabbed_fds[ctx->num_grabbed_fds++] = fd;
+                        LOG_INFO("    Grabbed successfully.");
+                    } else {
+                        LOG_WARN("    Maximum grabbed devices reached, closing.");
+                        close(fd);
+                    }
+                } else {
+                    LOG_ERROR("    Failed to grab device (errno=%d).", errno);
+                    perror("    ioctl EVIOCGRAB");
+                    close(fd);
+                }
+            }
+        }
+        udev_device_unref(input_dev);
+    }
+    udev_enumerate_unref(enumerate);
+}
