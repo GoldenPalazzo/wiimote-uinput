@@ -56,6 +56,11 @@ void log_message(const char* module, const char* format, ...) {
         fprintf(stderr, "[%s] [%s] ", time_str, module);
         vfprintf(stderr, format, args);
         fprintf(stderr, "\n\033[0m"); // Reset color
+    } else if (strcmp(module, LOG_LEVEL_WARN) == 0) {
+        fprintf(stderr, "\033[1;33m"); // Yellow color for warnings
+        fprintf(stderr, "[%s] [%s] ", time_str, module);
+        vfprintf(stderr, format, args);
+        fprintf(stderr, "\n\033[0m"); // Reset color
     } else {
         printf("[%s] [%s] ", time_str, module);
         vprintf(format, args);
