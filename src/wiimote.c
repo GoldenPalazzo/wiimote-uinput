@@ -291,6 +291,10 @@ int handle_wiimote_event(
             // parse accelerometer data (not implemented here)
             parse_generic(event_buffer+16, state);
             break;
+        case DATA_REP_COREEXT19:
+            parse_wiimote(event_buffer+1, NULL, NULL, state);
+            parse_generic(event_buffer+3, state);
+            break;
         case DATA_REP_EXT21:
             parse_generic(event_buffer+1, state);
             break;
@@ -369,6 +373,10 @@ int handle_wiimote_event(
                     case CC_SIGNATURE:
                         LOG_INFO("Classic Controller extension detected");
                         state->ext_status = EXT_CLASSIC_CONTROLLER;
+                        // default format is 1
+                        // hardcoding it to prevent annoying issue that happens
+                        // when connecting CC while Wiimote is off
+                        state->classic_controller.data_format = 1;
                         enqueue_msg(
                                 msgs,
                                 CC_DATAMODE_REQ,
