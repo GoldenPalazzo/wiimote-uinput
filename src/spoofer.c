@@ -30,7 +30,7 @@ ssize_t emit(
 int create_uinput_device(void) {
     struct uinput_setup usetup;
     struct uinput_abs_setup abs_setup;
-    int fd = open("/dev/uinput", O_WRONLY | O_NONBLOCK);
+    int fd = open("/dev/uinput", O_RDWR | O_NONBLOCK);
     if (fd < 0) {
         perror("open /dev/uinput");
         return fd;
@@ -63,12 +63,12 @@ int create_uinput_device(void) {
 
     ioctl(fd, UI_SET_KEYBIT, BTN_TR);
     ioctl(fd, UI_SET_KEYBIT, BTN_TL);
-    ioctl(fd, UI_SET_KEYBIT, BTN_TR2);
-    ioctl(fd, UI_SET_KEYBIT, BTN_TL2);
+    // ioctl(fd, UI_SET_KEYBIT, BTN_TR2);
+    // ioctl(fd, UI_SET_KEYBIT, BTN_TL2);
     ioctl(fd, UI_SET_ABSBIT, ABS_RZ);
     ioctl(fd, UI_SET_ABSBIT, ABS_Z);
 
-    ioctl(fd, UI_SET_FFBIT, FF_RUMBLE);
+    // ioctl(fd, UI_SET_FFBIT, FF_RUMBLE);
 
     memset(&usetup, 0, sizeof(usetup));
     usetup.id.bustype = BUS_USB;
@@ -149,9 +149,9 @@ void wiimote_to_uinput(const wiimote_state_t *wiimote, int uinput_fd) {
             emit(uinput_fd,
                     EV_KEY, BTN_SOUTH, wiimote->classic_controller.b);
             emit(uinput_fd,
-                    EV_KEY, BTN_NORTH, wiimote->classic_controller.x);
+                    EV_KEY, BTN_WEST, wiimote->classic_controller.x);
             emit(uinput_fd,
-                    EV_KEY, BTN_WEST, wiimote->classic_controller.y);
+                    EV_KEY, BTN_NORTH, wiimote->classic_controller.y);
             emit(uinput_fd,
                     EV_KEY, BTN_START, wiimote->classic_controller.plus);
             emit(uinput_fd,
@@ -174,10 +174,10 @@ void wiimote_to_uinput(const wiimote_state_t *wiimote, int uinput_fd) {
                     EV_ABS, ABS_Z, wiimote->classic_controller.lt);
             emit(uinput_fd,
                     EV_ABS, ABS_RZ, wiimote->classic_controller.rt);
-            emit(uinput_fd,
-                    EV_KEY, BTN_TL2, wiimote->classic_controller.lt > 128);
-            emit(uinput_fd,
-                    EV_KEY, BTN_TR2, wiimote->classic_controller.rt > 128);
+            // emit(uinput_fd,
+            //         EV_KEY, BTN_TL2, wiimote->classic_controller.lt > 128);
+            // emit(uinput_fd,
+            //         EV_KEY, BTN_TR2, wiimote->classic_controller.rt > 128);
             emit(uinput_fd,
                     EV_ABS, ABS_X, wiimote->classic_controller.lx - 512);
             emit(uinput_fd,
@@ -201,8 +201,8 @@ void wiimote_to_uinput(const wiimote_state_t *wiimote, int uinput_fd) {
             emit(uinput_fd, EV_ABS, ABS_RZ, 0);
             emit(uinput_fd, EV_KEY, BTN_TR, 0);
             emit(uinput_fd, EV_KEY, BTN_TL, 0);
-            emit(uinput_fd, EV_KEY, BTN_TR2, 0);
-            emit(uinput_fd, EV_KEY, BTN_TL2, 0);
+            // emit(uinput_fd, EV_KEY, BTN_TR2, 0);
+            // emit(uinput_fd, EV_KEY, BTN_TL2, 0);
             break;
     }
     emit(uinput_fd, EV_SYN, SYN_REPORT, 0);
