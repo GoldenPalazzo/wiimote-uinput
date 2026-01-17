@@ -373,6 +373,10 @@ int handle_wiimote_event(
                     case CC_SIGNATURE:
                         LOG_INFO("Classic Controller extension detected");
                         state->ext_status = EXT_CLASSIC_CONTROLLER;
+                        // default format is 1
+                        // hardcoding it to prevent annoying issue that happens
+                        // when connecting CC while Wiimote is off
+                        state->classic_controller.data_format = 1;
                         enqueue_msg(
                                 msgs,
                                 CC_DATAMODE_REQ,
