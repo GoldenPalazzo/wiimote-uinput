@@ -1,5 +1,7 @@
 #include "wiimote.h"
 #include "logger.h"
+#include "spoofer.h"
+#include <assert.h>
 #include <linux/uinput.h>
 #include <fcntl.h>
 #include <stdlib.h>
@@ -27,7 +29,9 @@ ssize_t emit(
     return res;
 }
 
-int create_uinput_device(void) {
+int create_uinput_device(const program_config_t *cfg) {
+    assert(cfg != NULL);
+
     struct uinput_setup usetup;
     struct uinput_abs_setup abs_setup;
     int fd = open("/dev/uinput", O_RDWR | O_NONBLOCK);
@@ -38,7 +42,7 @@ int create_uinput_device(void) {
 
     ioctl(fd, UI_SET_EVBIT, EV_KEY);
     ioctl(fd, UI_SET_EVBIT, EV_ABS);
-    ioctl(fd, UI_SET_EVBIT, EV_FF);
+    // ioctl(fd, UI_SET_EVBIT, EV_FF);
 
     ioctl(fd, UI_SET_KEYBIT, BTN_SOUTH);
     ioctl(fd, UI_SET_KEYBIT, BTN_EAST);
@@ -74,7 +78,7 @@ int create_uinput_device(void) {
     usetup.id.bustype = BUS_USB;
     usetup.id.vendor = 0x045e;
     usetup.id.product = 0x028e;
-    usetup.ff_effects_max = 16;
+    // usetup.ff_effects_max = 16;
     strcpy(usetup.name, "Xbox 360 Wireless Controller");
 
     memset(&abs_setup, 0, sizeof(abs_setup));
@@ -118,7 +122,8 @@ int destroy_uinput_device(int fd) {
     return 0;
 }
 
-void wiimote_to_uinput(const wiimote_state_t *wiimote, int uinput_fd) {
+void wiimote_to_uinput(const wiimote_state_t *wiimote,
+        const program_config_t *cfg, int uinput_fd) {
     if (!wiimote->initialized) {
         LOG_ERROR("Wiimote not initialized, cannot map to uinput.");
         return;
@@ -138,20 +143,28 @@ void wiimote_to_uinput(const wiimote_state_t *wiimote, int uinput_fd) {
     }
     switch (wiimote->ext_status) {
         case EXT_NUNCHUCK:
-            emit(uinput_fd, EV_ABS, ABS_X, wiimote->nunchuck.sx - 512);
+            emit(uinput_fd, EV_ABS, ABS_X, wiimote->nunchuck.sx-(cfg->upper_limit+1)/2);
             emit(uinput_fd, EV_ABS, ABS_Y, 512 - wiimote->nunchuck.sy);
             emit(uinput_fd, EV_KEY, BTN_TL, wiimote->nunchuck.z);
             emit(uinput_fd, EV_KEY, BTN_TR, wiimote->nunchuck.c);
             break;
         case EXT_CLASSIC_CONTROLLER:
             emit(uinput_fd,
-                    EV_KEY, BTN_EAST, wiimote->classic_controller.a);
+                    EV_KEY, BTN_EAST, cfg->inverted ?
+                        wiimote->classic_controller.b
+                        : wiimote->classic_controller.a);
             emit(uinput_fd,
-                    EV_KEY, BTN_SOUTH, wiimote->classic_controller.b);
+                    EV_KEY, BTN_SOUTH, cfg->inverted ?
+                        wiimote->classic_controller.a
+                        : wiimote->classic_controller.b);
             emit(uinput_fd,
-                    EV_KEY, BTN_WEST, wiimote->classic_controller.x);
+                    EV_KEY, BTN_WEST, cfg->inverted ?
+                        wiimote->classic_controller.y
+                        : wiimote->classic_controller.x);
             emit(uinput_fd,
-                    EV_KEY, BTN_NORTH, wiimote->classic_controller.y);
+                    EV_KEY, BTN_NORTH, cfg->inverted ?
+                        wiimote->classic_controller.x
+                        : wiimote->classic_controller.y);
             emit(uinput_fd,
                     EV_KEY, BTN_START, wiimote->classic_controller.plus);
             emit(uinput_fd,
@@ -178,14 +191,18 @@ void wiimote_to_uinput(const wiimote_state_t *wiimote, int uinput_fd) {
             //         EV_KEY, BTN_TL2, wiimote->classic_controller.lt > 128);
             // emit(uinput_fd,
             //         EV_KEY, BTN_TR2, wiimote->classic_controller.rt > 128);
+            int lx = (wiimote->classic_controller.lx-512)*cfg->sens;
+            int ly = (512-wiimote->classic_controller.ly)*cfg->sens;
+            int rx = (wiimote->classic_controller.rx-512)*cfg->sens;
+            int ry = (512-wiimote->classic_controller.ry)*cfg->sens;
             emit(uinput_fd,
-                    EV_ABS, ABS_X, wiimote->classic_controller.lx - 512);
+                    EV_ABS, ABS_X, lx);
             emit(uinput_fd,
-                    EV_ABS, ABS_Y, 512 - wiimote->classic_controller.ly);
+                    EV_ABS, ABS_Y, ly);
             emit(uinput_fd,
-                    EV_ABS, ABS_RX, wiimote->classic_controller.rx - 512);
+                    EV_ABS, ABS_RX, rx);
             emit(uinput_fd,
-                    EV_ABS, ABS_RY, 512 - wiimote->classic_controller.ry);
+                    EV_ABS, ABS_RY, ry);
             break;
         case EXT_NONE:
         case EXT_UNKNOWN:

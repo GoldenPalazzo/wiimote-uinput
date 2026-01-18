@@ -1,3 +1,4 @@
+#include "config.h"
 #include "spoofer.h"
 #include "wiimote.h"
 #include "logger.h"
@@ -50,6 +51,8 @@ static inline int is_wiimote(struct hidraw_devinfo *info) {
                 info->product == 0x0306 || info->product == 0x0330));
 }
 
+program_config_t global_config;
+
 typedef struct {
     int hidraw_fd;
     int uinput_fd;
@@ -71,6 +74,9 @@ int init_connected_wiimotes(struct udev *udev,
         wiimote_context_t *wiimote_contexts);
 
 int main(int argc, char *argv[]) {
+    int ret = 0;
+    char config_path[1024];
+
     const struct argp arguments = {
         .options = options,
         .parser = parse_opt,
@@ -82,7 +88,25 @@ int main(int argc, char *argv[]) {
     enable_module(LOG_LEVEL_WARN);
     enable_module(LOG_LEVEL_ERROR);
 
-    int ret = 0, mon_fd, epoll_fd;
+    if (create_config_dir(config_path, sizeof(config_path)) < 0) {
+        LOG_ERROR("Failed initializing config folder");
+        ret = 1;
+        goto failed;
+    }
+    strcat(config_path, "/config.toml");
+    LOG_INFO("Searching for %s", config_path);
+
+    FILE* config_file = fopen(config_path, "r");
+    if (config_file == NULL) {
+        apply_default_config(&global_config);
+    } else if (parse_config(config_file, &global_config) < 0) {
+        LOG_ERROR("Failed initializing global configuration");
+        ret = 1;
+        goto failed;
+    }
+    log_configuration(&global_config);
+
+    int mon_fd, epoll_fd;
     struct udev *udev;
     struct udev_monitor *mon;
     struct epoll_event ev, events[10];
@@ -217,7 +241,7 @@ int main(int argc, char *argv[]) {
                         LOG_ERROR("Failed to handle wiimote event.");
                         continue;
                     }
-                    wiimote_to_uinput(&wm->state, wm->uinput_fd);
+                    wiimote_to_uinput(&wm->state, &global_config, wm->uinput_fd);
                 }
                 if (r_bytes < 0) {
                     if (events[i].events & (EPOLLERR | EPOLLHUP)) {
@@ -335,7 +359,7 @@ int register_wiimote_device(struct udev_device *dev,
     }
     LOG_INFO("  Wiimote device added to epoll.");
     wm->uinput_fd =
-        create_uinput_device();
+        create_uinput_device(&global_config);
     if (wm->uinput_fd < 0) {
         perror("create_uinput_device");
         ret = -1;
