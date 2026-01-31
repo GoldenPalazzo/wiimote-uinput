@@ -267,10 +267,12 @@ void handle_status_input_reply(
                 LOG_ERROR("Failed to enqueue extension decryption request");
             }
         }
-    } else if (!WII_FLAG_EXT_CONNECTED(*state)
-                && state->ext_status != EXT_NONE) {
-        LOG_INFO("Disconnection from extension detected");
-        state->ext_status = EXT_NONE;
+    } else {
+        enqueue_datarep_request(msgs, DATA_REP_COREACC);
+        if (state->ext_status != EXT_NONE) {
+            LOG_INFO("Disconnection from extension detected");
+            state->ext_status = EXT_NONE;
+        }
     }
 }
 
