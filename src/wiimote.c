@@ -143,6 +143,18 @@ detect_end:
     return ret;
 }
 
+int enqueue_datarep_request(msg_queue_t *msgs, int datarep_mode) {
+    int ret = 0;
+    if (msgs->count + 1 > MSGQ_SIZE) {
+        LOG_ERROR("Message queue full, can't request data reporting mode");
+        return -1;
+    }
+    uint8_t buf[] = {0x12, 0x00, datarep_mode};
+    enqueue_msg(msgs, buf, sizeof(buf));
+    LOG_DEBUG("Enqueued data reporting mode %x", datarep_mode);
+    return 0;
+}
+
 // Parsers
 
 void parse_wiimote(
@@ -241,17 +253,19 @@ void handle_status_input_reply(
     state->battery = buf[7];
     parse_wiimote(buf+1, NULL, NULL, state);
 
-    if (WII_FLAG_EXT_CONNECTED(*state)
-        && state->ext_status == EXT_NONE) {
+    if (WII_FLAG_EXT_CONNECTED(*state)) {
         LOG_INFO("Connection to extension detected");
-        state->ext_status = EXT_WAITING_DECRYPTION_0;
-        if (enqueue_msg(
-                msgs,
-                EXT_DECRYPT_PHASE1,
-                sizeof(EXT_DECRYPT_PHASE1)) == 0) {
-            LOG_INFO("Started extension decryption process");
-        } else {
-            LOG_ERROR("Failed to enqueue extension decryption request");
+        enqueue_datarep_request(msgs, DATA_REP_COREACC16);
+        if (state->ext_status == EXT_NONE) {
+            state->ext_status = EXT_WAITING_DECRYPTION_0;
+            if (enqueue_msg(
+                    msgs,
+                    EXT_DECRYPT_PHASE1,
+                    sizeof(EXT_DECRYPT_PHASE1)) == 0) {
+                LOG_INFO("Started extension decryption process");
+            } else {
+                LOG_ERROR("Failed to enqueue extension decryption request");
+            }
         }
     } else if (!WII_FLAG_EXT_CONNECTED(*state)
                 && state->ext_status != EXT_NONE) {
@@ -322,7 +336,7 @@ int handle_wiimote_event(
                 } else if (state->ext_status == EXT_WAITING_DECRYPTION_1) {
                     LOG_INFO("Extension decryption phase 2 write acknowledged");
                     state->ext_status = EXT_DECRYPTED;
-                    enqueue_ext_detect(msgs);
+                    enqueue_ext_detect(msgs); 
                 }
             }
             break;
