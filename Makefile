@@ -3,8 +3,9 @@ CFLAGS = -Wall -Wextra -Wfloat-equal -Wundef -Wshadow -Wpointer-arith \
 	 -Wcast-align -Wstrict-prototypes -Wstrict-overflow \
 	 -Wwrite-strings -Waggregate-return -Wcast-qual \
 	 -Wswitch-default -Wswitch-enum -Wconversion \
-	 -Wunreachable-code
-LDFLAGS = -ludev
+	 -Wunreachable-code \
+	 -I/usr/include/libevdev-1.0
+LDFLAGS = -ludev -levdev
 
 SRC_FOLDER = src
 BUILD_FOLDER = build
