@@ -152,7 +152,8 @@ int main(int argc, char *argv[]) {
         }
 
         for (i=0; i<n_events; i++) {
-            if (events[i].data.fd == mon_fd) { // udev monitor loop
+            const struct epoll_event *cur_ev = &events[i];
+            if (cur_ev->data.fd == mon_fd) { // udev monitor loop
                 LOG_DEBUG("Udev monitor event detected.");
                 struct udev_device *dev = udev_monitor_receive_device(mon);
                 if (dev == NULL)
@@ -195,21 +196,20 @@ int main(int argc, char *argv[]) {
 
 
             } else { // wiimote loop
-                int ev_fd = events[i].data.fd;
                 wiimote_context_t *wm = NULL;
                 for (int j=0; j<MAX_WIIMOTES; j++) {
                     if (wiimote_contexts[j].active
-                        && wiimote_contexts[j].hidraw_fd == ev_fd) {
+                        && wiimote_contexts[j].hidraw_fd == cur_ev->data.fd) {
                         wm = wiimote_contexts+j;
                         break;
                     }
                 }
                 if (wm == NULL) {
-                    LOG_ERROR("Unknown wiimote fd %d", ev_fd);
+                    LOG_ERROR("Unknown wiimote fd %d", cur_ev->data.fd);
                     continue;
                 }
 
-                if (events[i].events & EPOLLOUT) {
+                if (cur_ev->events & EPOLLOUT) {
                     LOG_DEBUG("Wiimote fd %d ready for writing.", wm->hidraw_fd);
                     wm->hid_writable = 1;
                 }
@@ -235,11 +235,10 @@ int main(int argc, char *argv[]) {
                     }
                 }
 
-                ssize_t r_bytes = 1;
                 if (events[i].events & EPOLLIN)
                     LOG_DEBUG("Wiimote fd %d ready for reading.", wm->hidraw_fd);
-                while (r_bytes > 0 && (events[i].events & EPOLLIN)) {
-                    r_bytes = read(
+                while (events[i].events & EPOLLIN) {
+                    ssize_t r_bytes = read(
                             wm->hidraw_fd,
                             event_buffer, sizeof(event_buffer));
                     char buf_hex[3*64] = {0};
@@ -248,6 +247,30 @@ int main(int argc, char *argv[]) {
                     }
                     LOG_DEBUG("Read %zd bytes from wiimote fd %d: %s",
                             r_bytes, wm->hidraw_fd, buf_hex);
+                    if (r_bytes < 0) {
+                        if (cur_ev->events & (EPOLLERR | EPOLLHUP)) {
+                            LOG_ERROR(
+                                    "epoll wiimote error detected, disconnecting.");
+                            LOG_INFO(
+                                    "Wiimote disconnected (read %d bytes).",
+                                    r_bytes);
+                            epoll_ctl(epoll_fd, EPOLL_CTL_DEL, wm->hidraw_fd, &ev);
+                            cleanup_wiimote_context(wm);
+                        } else if (errno != EAGAIN) {
+                            LOG_ERROR("Failed to read wiimote event %d", errno);
+                        } else if (errno == EAGAIN) {
+                            // LOG_DEBUG(
+                            //         "No more data to read from wiimote fd %d",
+                            //         wm->hidraw_fd);
+                        }
+                        break;
+                    } else if (r_bytes == 0) {
+                        LOG_ERROR("unhandled: read 0 bytes from wiimote fd %d",
+                                wm->hidraw_fd);
+                        break;
+                    }
+
+
                     if (handle_wiimote_event(
                             &wm->msg_queue,
                             &wm->state,
@@ -258,26 +281,7 @@ int main(int argc, char *argv[]) {
                     // wiimote_to_uinput(&wm->state, &global_config, wm->uinput_fd);
                     update_virtgp_state(&wm->state, &global_config, &wm->virt_gp);
                 }
-                if (r_bytes < 0) {
-                    if (events[i].events & (EPOLLERR | EPOLLHUP)) {
-                        LOG_ERROR(
-                                "epoll wiimote error detected, disconnecting.");
-                        LOG_INFO(
-                                "Wiimote disconnected (read %d bytes).",
-                                r_bytes);
-                        epoll_ctl(epoll_fd, EPOLL_CTL_DEL, wm->hidraw_fd, &ev);
-                        cleanup_wiimote_context(wm);
-                    } else if (errno != EAGAIN) {
-                        LOG_ERROR("Failed to read wiimote event %d", errno);
-                    } else if (errno == EAGAIN) {
-                        // LOG_DEBUG(
-                        //         "No more data to read from wiimote fd %d",
-                        //         wm->hidraw_fd);
-                    }
-                } else if (r_bytes == 0) {
-                    LOG_ERROR("unhandled: read 0 bytes from wiimote fd %d",
-                            wm->hidraw_fd);
-                }
+                
 
                 // struct input_event ff_ev;
                 // while (read(wm->uinput_fd, &ff_ev, sizeof(ff_ev)) > 0) {
