@@ -1,33 +1,36 @@
 CC = gcc
+CPPFLAGS = -I/usr/include/libevdev-1.0 -MMD -MP
 CFLAGS = -Wall -Wextra -Wfloat-equal -Wundef -Wshadow -Wpointer-arith \
 	 -Wcast-align -Wstrict-prototypes -Wstrict-overflow \
 	 -Wwrite-strings -Waggregate-return -Wcast-qual \
 	 -Wswitch-default -Wswitch-enum -Wconversion \
-	 -Wunreachable-code \
-	 -I/usr/include/libevdev-1.0
+	 -Wunreachable-code
 LDFLAGS = -ludev -levdev
 
 SRC_FOLDER = src
 BUILD_FOLDER = build
 SOURCES = $(wildcard src/*.c)
 OBJECTS = $(patsubst $(SRC_FOLDER)/%.c,$(BUILD_FOLDER)/%.o,$(SOURCES))
+DEPS = $(OBJECTS:.o=.d)
 BIN = $(BUILD_FOLDER)/wiimote-uinput
 
 .PHONY: all debug clean
 
 all: CFLAGS += -O2
 all: $(BIN)
+debug: CFLAGS += -g -O0
+debug: $(BIN)
 
 $(BIN): $(OBJECTS)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 $(BUILD_FOLDER)/%.o: $(SRC_FOLDER)/%.c | $(BUILD_FOLDER)
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-debug: CFLAGS += -g -O0
-debug: $(BIN)
+-include $(DEPS)
+
 clean:
-	rm -f $(OBJECTS) $(BIN)
+	rm -rf $(BUILD_FOLDER)
 
 $(BUILD_FOLDER):
 	mkdir -p $(BUILD_FOLDER)
