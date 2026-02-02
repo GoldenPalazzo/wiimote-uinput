@@ -29,6 +29,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
+#include <stdbool.h>
 
 #include "wiimote.h"
 #include "logger.h"
@@ -175,6 +176,18 @@ void parse_wiimote(
         wm_state->btn_1 = (btns_buf[1] & 0x02) >> 1;
         wm_state->btn_2 = (btns_buf[1] & 0x01);
     }
+    if (acc_buf != NULL) {
+        wm_state->acc_x = acc_buf[0] << 2
+                            | (btns_buf[0] & 0x60) >> 5;
+        wm_state->acc_y = acc_buf[1] << 2
+                            | (btns_buf[1] & 0x20) >> 4;
+        wm_state->acc_z = acc_buf[2] << 2
+                            | (btns_buf[1] & 0x40) >> 5;
+        // printf("%x %x %x\n", wm_state->acc_x, wm_state->acc_y, wm_state->acc_z);
+    }
+    if (ir_buf != NULL) {
+
+    }
 }
 
 void parse_nunchuck(const uint8_t *nc_buf, nunchuck_state_t *nc_state) {
@@ -285,27 +298,26 @@ int handle_wiimote_event(
     // LOG_DEBUG("Wiimote event report type: %hhx", event_buffer[0]);
     switch (event_buffer[0]) {
         case DATA_REP_COREBTNS:
-        // accel not implemented yet
+            parse_wiimote(event_buffer+1, NULL, NULL, state);
+            break;
         case DATA_REP_COREACC:
         case DATA_REP_COREACCIR12:
-            parse_wiimote(event_buffer+1, NULL, NULL, state);
+            parse_wiimote(event_buffer+1, event_buffer+3, NULL, state);
             break;
         case DATA_REP_COREEXT8:
             parse_wiimote(event_buffer+1, NULL, NULL, state);
             parse_generic(event_buffer+3, state);
             break;
         case DATA_REP_COREACC16:
-            parse_wiimote(event_buffer+1, NULL, NULL, state);
+            parse_wiimote(event_buffer+1, event_buffer+3, NULL, state);
             parse_generic(event_buffer+6, state);
             break;
         case DATA_REP_COREIR10EXT9:
-            parse_wiimote(event_buffer+1, NULL, NULL, state);
-            // parse ir data (not implemented here)
+            parse_wiimote(event_buffer+1, NULL, event_buffer+3, state);
             parse_generic(event_buffer+13, state);
             break;
         case DATA_REP_COREACCIR10EXT6:
-            parse_wiimote(event_buffer+1, NULL, NULL, state);
-            // parse accelerometer data (not implemented here)
+            parse_wiimote(event_buffer+1, event_buffer+3, event_buffer+6, state);
             parse_generic(event_buffer+16, state);
             break;
         case DATA_REP_COREEXT19:

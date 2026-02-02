@@ -39,6 +39,8 @@ typedef struct {
     uint8_t btn_plus, btn_minus, btn_home;
     uint8_t btn_up, btn_down, btn_left, btn_right;
 
+    uint16_t acc_x, acc_y, acc_z;
+
     enum extension_status ext_status;
     nunchuck_state_t nunchuck;
     classic_controller_state_t classic_controller;
